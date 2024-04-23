@@ -4,7 +4,7 @@
 void apply_FBL_filter(
     V3DF** src_cim, 
 	FlowPath** src_fpath,
-    V3DF** &cimFBL,
+    V3DF** cimFBL,
     int w, int h,
     float sigma_e, float gamma_e, float sigma_g, float gamma_g,	int iteration,
     int threshold_T
@@ -112,6 +112,130 @@ void apply_FBL_filter(
 	for (i=0; i<w; i++)
 		for (j=0; j<h; j++)
 			vcopy(cimFBL[i][j], OImg[i][j]);
+
+	for (i=0; i<w; i++){
+		delete [] InImg[i];
+		delete [] OImg[i];
+	}
+	delete [] InImg;
+	delete [] OImg;
+
+	printf("done\n");
+}
+void apply_FBL_filter(
+    cv::Mat &src_cim, 
+	FlowPath** src_fpath,
+    cv::Mat &dst_cimFBL,
+    int w, int h,
+    float sigma_e, float gamma_e, float sigma_g, float gamma_g,	int iteration,
+    int threshold_T
+)
+{	// Flow-Based Bilateral Filter
+	printf("FBLFilter..");
+	int it, i,j, r;
+	float px,py;
+	V3DF clr,dclr;
+
+	int MaskSize=threshold_T;
+	float G_sigma_e, G_sigma_g;
+	float H_gamma_e, H_gamma_g;
+	V3DF Ce, Cg;
+	float normal_term;
+
+	V3DF **InImg = new V3DF *[w];
+	V3DF **OImg = new V3DF *[w];
+	for (i=0; i<w; i++){
+		InImg[i] = new V3DF[h];
+		OImg[i] = new V3DF[h];
+		for (j=0; j<h; j++){
+			vcopy(InImg[i][j], src_cim.at<cv::Vec3f>(j, i));
+			vcopy(OImg[i][j], src_cim.at<cv::Vec3f>(j, i));
+		}
+	}
+	conv_RGBtoLAB(InImg, w, h);
+	conv_RGBtoLAB(OImg, w, h);
+
+	float s, div_g,div_g2;
+	float cdist, div_s, div_s2;	// color distance
+	for (it=0; it<iteration; it++){
+		printf("%d..",it+1);
+		// 1. Ce : linear bilateral filter along the edge(or ETF)
+		div_g	= sqrt(2*PI)*sigma_e;	div_g2	= 2*sigma_e*sigma_e;
+		div_s	= sqrt(2*PI)*gamma_e;	div_s2	= 2*gamma_e*gamma_e;
+		for (i=0; i<w; i++){
+			for (j=0; j<h; j++){
+				normal_term = 0.0f;	vzero(Ce);
+				for (r=0; r<src_fpath[i][j].sn; r++){
+					px = src_fpath[i][j].Alpha[r][0];	py = src_fpath[i][j].Alpha[r][1];
+					//if ( px<0||px>=MAX_X || py<0||py>=MAX_Y)	continue;
+					// 1) color
+					GetValAtPoint_V3DF(InImg, w, h, px,py, clr);
+
+					// 2) spatial
+					s =	sqrt((i-px)*(i-px) + (j-py)*(j-py));	// (i,j)~(px,py)
+					G_sigma_e = ( exp(-(s*s)/div_g2) / div_g );
+
+					// 3) color
+					vsub(dclr, InImg[i][j], clr);	// clr(i,j) ~ clr(px,py)
+					cdist = vlength(dclr);
+					H_gamma_e = ( exp(-(cdist*cdist)/div_s2) / div_s );
+
+					// 4) 최종
+					vscalar(clr, G_sigma_e * H_gamma_e);
+					vadd(Ce, clr);
+					normal_term += (G_sigma_e * H_gamma_e);
+				}
+				if ( normal_term==0.0f )	continue;
+
+				vscalar(Ce, 1.0f/normal_term);
+				vcopy(OImg[i][j], Ce);
+
+				printf("Ce: [%.3f, %.3f, %.3f]\n", Ce[0], Ce[1], Ce[2]);
+			}
+		}
+
+		init_buf(InImg, OImg, w, h);
+
+		// 2. Cg : linear bilateral filter along the gradient direction
+		div_g	= sqrt(2*PI)*sigma_g;	div_g2	= 2*sigma_g*sigma_g;
+		div_s	= sqrt(2*PI)*gamma_g;	div_s2	= 2*gamma_g*gamma_g;
+		for (i=0; i<w; i++){
+			for (j=0; j<h; j++){
+				normal_term = 0.0f;	vzero(Cg);
+				for (r=0; r<src_fpath[i][j].tn; r++){
+					px = src_fpath[i][j].Beta[r][0];	py = src_fpath[i][j].Beta[r][1];
+					//if ( px<0||px>=MAX_X || py<0||py>=MAX_Y)	continue;
+					// 1) color
+					GetValAtPoint_V3DF(InImg, w,h, px,py, clr);
+
+					// 2) spatial
+					s =	sqrt((i-px)*(i-px) + (j-py)*(j-py));	// (i,j)~(px,py)
+					G_sigma_g = ( exp(-(s*s)/div_g2) / div_g );
+
+					// 3) color
+					vsub(dclr, InImg[i][j], clr);	// clr(i,j) ~ clr(px,py)
+					cdist = vlength(dclr);
+					H_gamma_g = ( exp(-(cdist*cdist)/div_s2) / div_s );
+
+					// 4) 최종
+					vscalar(clr, G_sigma_g * H_gamma_g);
+					vadd(Cg, clr);
+					normal_term += (G_sigma_g *H_gamma_g);
+				}
+				if ( normal_term==0.0f )	continue;
+
+				vscalar(Cg, 1.0f/normal_term);
+				vcopy(OImg[i][j], Cg);
+			}
+		}
+
+		init_buf(InImg, OImg, w, h);
+	}
+
+	conv_LABtoRGB(OImg, w, h);
+	for (i=0; i<w; i++)
+		for (j=0; j<h; j++)
+			vcopy(dst_cimFBL.at<cv::Vec3f>(j, i), OImg[i][j]);
 
 	for (i=0; i<w; i++){
 		delete [] InImg[i];

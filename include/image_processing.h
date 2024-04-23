@@ -26,6 +26,14 @@ void apply_FBL_filter(
     float sigma_e, float gamma_e, float sigma_g, float gamma_g,	int iteration,
     int threshold_T
 );
+void apply_FBL_filter( 
+    cv::Mat &src_cim, 
+	FlowPath** src_fpath,
+    cv::Mat &cimFBL,
+    int w, int h,
+    float sigma_e, float gamma_e, float sigma_g, float gamma_g,	int iteration,
+    int threshold_T
+);
 
 void get_gradient(
 	float** src_gray_im, 

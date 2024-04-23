@@ -22,6 +22,15 @@ int main(int argc, char** argv ) {
 	int CL_iterations = 3;
 	int nbhd = 5;
 
+	// Set FBL params
+	float FBL_sigma_e = 2.0f;
+	float FBL_gamma_e = 50.0f;
+	float FBL_sigma_g = 2.0f;
+	float FBL_gamma_g = 10.0f;
+	int FBL_threshold_T = threshold_T;
+	int FBL_iteration = 3;
+
+
     cv::Mat __image, _image, image;
     __image = cv::imread( argv[1], cv::IMREAD_COLOR );
     if ( !__image.data )
@@ -31,9 +40,6 @@ int main(int argc, char** argv ) {
     }
 	__image.convertTo(_image, CV_32FC3);
 	cv::normalize(_image, image, 0.0f, 1.0f, cv::NORM_MINMAX);
-    cv::namedWindow("Display Image", cv::WINDOW_AUTOSIZE );
-    cv::imshow("Display Image", image);
-    cv::waitKey(0);
 
     cv::Mat __img_gray, _img_gray, img_gray;
     __img_gray = cv::imread( argv[1], cv::IMREAD_GRAYSCALE );
@@ -58,40 +64,16 @@ int main(int argc, char** argv ) {
 
 	// get_gradient(img_gray, grad, w, h, grad_thr); // origin
 	get_gradient(img_gray, grad, w, h, grad_thr);
-	
-	cv::Mat normalizedImage;
-	cv::Mat displayImage;
-
-	cv::normalize(grad, normalizedImage, 0, 255, cv::NORM_MINMAX, CV_32FC3);
-	normalizedImage.convertTo(displayImage, CV_8UC3);
-
-	cv::imshow("Display Image", img_gray);
-    cv::waitKey(0);
-	cv::imshow("Display Image", displayImage);
-    cv::waitKey(0);
-
 	std::cout << "gradient doen." << std::endl;
 
 	cv::Mat tangent = cv::Mat::zeros(h, w, CV_32FC3);
 	get_tangent(grad, tangent, w, h);
 	std::cout << "tangent doen." << std::endl;
 
-	cv::normalize(tangent, normalizedImage, 0, 255, cv::NORM_MINMAX, CV_32FC3);
-	normalizedImage.convertTo(displayImage, CV_8UC3);
-	cv::imshow("Display Image", displayImage); 
-    cv::waitKey(0);
-
-	// init_buf(etf, tangent, w, h);
 	cv::Mat etf = tangent.clone();
-
 	get_ETF(grad, etf, nbhd, w, h);
 	get_ETF(grad, etf, nbhd, w, h);
 	std::cout << "etf done." << std::endl;
-
-	cv::normalize(etf, normalizedImage, 0, 255, cv::NORM_MINMAX, CV_32FC3);
-	normalizedImage.convertTo(displayImage, CV_8UC3);
-	cv::imshow("Display Image", displayImage); 
-    cv::waitKey(0);
 
 	FlowPath** fpath = new FlowPath*[w];
 	FlowPath** vpath = new FlowPath*[w];
@@ -112,15 +94,63 @@ int main(int argc, char** argv ) {
 	get_coherent_line(img_gray, etf, fpath, imCL, w, h, threshold_T, CL_tanh_he_thr, CL_sigma_c_line_width, CL_sigma_m_line_coherence, P, CL_iterations);
 	std::cout << "coherent line done." << std::endl;
 	
-	cv::Mat normalizedImage_gray;
-	cv::normalize(imCL, normalizedImage_gray, 0, 255, cv::NORM_MINMAX, CV_32F);
-	normalizedImage_gray.convertTo(displayImage, CV_8UC1);
-	cv::imshow("Display Image", displayImage); 
+	cv::Mat infodraw_img = cv::imread(argv[2], cv::IMREAD_COLOR);
+	infodraw_img.convertTo(infodraw_img, CV_32FC3);
+	cv::normalize(infodraw_img, infodraw_img, 0.0f, 1.0f, cv::NORM_MINMAX);
+	cv::Size info_size = infodraw_img.size();
+	if (size != info_size) {
+		printf("input image and info draw image must be matched!\n");
+		exit(1);
+	}
+	
+	cv::Mat FBL_res = cv::Mat::zeros(info_size, CV_32FC3);
+	apply_FBL_filter(infodraw_img, fpath, FBL_res, w, h, FBL_sigma_e, FBL_gamma_e, FBL_sigma_g, FBL_gamma_g, FBL_iteration, FBL_threshold_T);
+
+
+	//== draw images==
+	// origin image
+	cv::namedWindow("Original image", cv::WINDOW_AUTOSIZE );
+    cv::imshow("Original image", image);
+
+	// gray image
+	cv::namedWindow("Gray image", cv::WINDOW_AUTOSIZE );
+    cv::imshow("Gray image", img_gray);
+
+	// gradient
+	cv::namedWindow("Gradient Image", cv::WINDOW_AUTOSIZE );
+	cv::normalize(grad, grad, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32FC3);
+	cv::imshow("Gradient Image", grad);
+
+	// tangent 
+	cv::namedWindow("Tangent Image", cv::WINDOW_AUTOSIZE );
+	cv::normalize(tangent, tangent, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32FC3);
+	cv::imshow("Tangent Image", tangent); 
+
+	// ETF
+	cv::namedWindow("ETF Image", cv::WINDOW_AUTOSIZE );
+	cv::normalize(etf, etf, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32FC3);
+	cv::imshow("ETF Image", etf); 
+
+	// CL
+	cv::namedWindow("CL Image", cv::WINDOW_AUTOSIZE );
+	cv::normalize(imCL, imCL, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32F);
+	cv::imshow("CL Image", imCL); 
+
+	// FBL
+	cv::namedWindow("FBL Image", cv::WINDOW_AUTOSIZE );
+	cv::normalize(FBL_res, FBL_res, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32F);
+	cv::imshow("FBL Image", FBL_res);
+
+
+
     cv::waitKey(0);
 
-
-
-
+	for(int i=0; i<w; ++i) {
+		delete [] fpath[i];
+		delete [] vpath[i];
+	}
+	delete [] fpath;
+	delete [] vpath;
 
     return 0;
 }
