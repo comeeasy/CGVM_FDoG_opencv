@@ -56,10 +56,20 @@ void get_ETF(
 	V3DF** src_grad, V3DF** &dst_etf,
 	int nbhd, int w, int h
 );
+void get_ETF(
+	cv::Mat &src_grad, cv::Mat &dst_etf,
+	int nbhd, int w, int h
+);
 
 void get_flow_path(
 	V3DF** src_etf, 
 	V3DF** src_grad, 
+	FlowPath** dst_fpath, 
+	int w, int h, int threshold_S, int threshold_T
+);
+void get_flow_path(
+	cv::Mat &src_etf, 
+	cv::Mat &src_grad, 
 	FlowPath** dst_fpath, 
 	int w, int h, int threshold_S, int threshold_T
 );
@@ -69,9 +79,18 @@ void get_coherent_line(
  	int w, int h, float threshold_T, float CL_tanh_he_thr,
 	float sigmaC, float sigmaM, float P, int iterations
 );
+void get_coherent_line(
+	cv::Mat &src_gray_im, cv::Mat &src_etf, FlowPath** src_fpath, cv::Mat &dst_imCL,
+ 	int w, int h, float threshold_T, float CL_tanh_he_thr,
+	float sigmaC, float sigmaM, float P, int iterations
+);
 
 void cl_set_flow_at_point_S(
 	V3DF** src_etf, FlowPath* dst_fpath,
+	int px, int py, int w, int h, int threshold_S /*, int* nPoints, V3DF *Alpha*/
+);
+void cl_set_flow_at_point_S(
+	cv::Mat &src_etf, FlowPath* dst_fpath,
 	int px, int py, int w, int h, int threshold_S /*, int* nPoints, V3DF *Alpha*/
 );
 
@@ -79,9 +98,17 @@ void cl_set_flow_at_point_T(
 	V3DF** src_grad, FlowPath* dst_fpath,
 	int px, int py, int w, int h, int threshold_T /*int *nPoints, V3DF *Beta*/
 );
+void cl_set_flow_at_point_T(
+	cv::Mat &src_grad, FlowPath* dst_fpath,
+	int px, int py, int w, int h, int threshold_T /*int *nPoints, V3DF *Beta*/
+);
 
 void V3DF_interpolate(
 	V3DF** src, V3DF dst, 
+	float px, float py, int w, int h
+);
+void V3DF_interpolate(
+	cv::Mat &src, V3DF dst, 
 	float px, float py, int w, int h
 );
 

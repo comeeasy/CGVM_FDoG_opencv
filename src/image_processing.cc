@@ -202,7 +202,7 @@ void get_gradient(
 
 	for(int i=0; i<w; ++i) {
 		for(int j=0; j<h; ++j) {
-			src_gray_img_arr[i][j] = src_gray_img.at<uint8_t>(j, i);
+			src_gray_img_arr[i][j] = src_gray_img.at<float>(j, i);
 		}
 	}
 	
@@ -293,20 +293,19 @@ void get_tangent(
 	cv::Mat &dst_tangent, 
 	int w, int h
 ) {
-	int i,j;
 	V3DF gradient;
 	V3DF axis_z = {0.0f, 0.0f, 1.0f};
 
-	for (i=0; i<w; i++){
-		for (j=0; j<h; j++){
+	for (int i=0; i<w; i++){
+		for (int j=0; j<h; j++){
 			cv::Vec3f &src_grad_pixel = src_grad.at<cv::Vec3f>(j, i);
 			cv::Vec3f &dst_tangent_pixel = dst_tangent.at<cv::Vec3f>(j, i);
 			if ( src_grad_pixel[2]==0.0f ){
 				vzero( dst_tangent_pixel );
 				continue;
 			}
-			// vector(gradient, src_grad[i][j][0], src_grad[i][j][1], 0.0f);
-			// vcross(dst_tangent[i][j], gradient, axis_z);
+			vector(gradient, src_grad_pixel[0], src_grad_pixel[1], 0.0f);
+			vcross(dst_tangent_pixel, gradient, axis_z);
 		}
 	}
 }
@@ -381,6 +380,84 @@ void get_ETF(
 	float finish = clock();	
 	printf("Took %.2f seconds.\n", ((finish-start)/CLOCKS_PER_SEC ));
 }
+void get_ETF(
+	cv::Mat &src_grad, cv::Mat &dst_etf,
+	int nbhd, int w, int h
+) {
+	printf("GetETF.. ");
+	float start = clock();
+	int i,j,a,b;
+	V3DI xvec,yvec;
+	V3DF tcur,tsum;
+	float W;
+	float r = (float)nbhd;
+
+	V3DF **oldetf = new V3DF *[w];
+	for (i=0; i<w; i++){
+		oldetf[i] = new V3DF[h];
+		for (j=0; j<h; j++) {
+			cv::Vec3f &dst_etf_pixel = dst_etf.at<cv::Vec3f>(j, i);
+			vcopy(oldetf[i][j], dst_etf_pixel);	
+		}
+	}
+
+	for (i=0; i<w; i++){
+		for (j=0; j<h; j++){
+			cv::Vec3f &src_grad_pixel = src_grad.at<cv::Vec3f>(j, i);
+			cv::Vec3f &dst_etf_pixel = dst_etf.at<cv::Vec3f>(j, i);
+			if ( src_grad_pixel[2] == 0.0f ){
+				vzero(dst_etf_pixel);
+				continue;
+			}
+
+			vectori(xvec, i,j,0);
+			vzero(tsum);
+			for (a=-nbhd; a<=nbhd; a++){
+				for (b=-nbhd; b<=nbhd; b++){
+					vectori(yvec, i+a, j+b, 0);
+					
+					// ���ó��
+					if (yvec[0]<0) yvec[0] *= (-1.0f);
+					else if (yvec[0]>=w)	yvec[0] = w-(yvec[0]-(w-1));
+					if (yvec[1]<0) yvec[1] *= (-1.0f);
+					else if (yvec[1]>=h)	yvec[1] = h-(yvec[1]-(h-1));
+
+					cv::Vec3f &src_grad_pixel_yvec = src_grad.at<cv::Vec3f>(yvec[1], yvec[0]);
+					cv::Vec3f &src_grad_pixel_xvec = src_grad.at<cv::Vec3f>(xvec[1], xvec[0]);
+
+					// if (src_grad[yvec[0]][yvec[1]][2] == 0.0f)	continue;
+					if (src_grad_pixel_yvec[2] == 0.0f) continue;
+
+					//1. w_s(x,y) = 0, if |xvec-yvec| >= r
+					//if ( pdist2(xvec,yvec) >= r)
+					if ( pdist2(xvec,yvec) > r)
+						continue;
+
+					//2. w_m = 0.5 (1 + tanh[(g(y) - g(x))])
+					W = 0.5f * (1.0f + (src_grad_pixel_yvec[2] - src_grad_pixel_xvec[2]));
+
+					//3. w_d = | etf(x) DOT etf(y) |
+					W *= fabs( vdot( oldetf[xvec[0]][xvec[1]], oldetf[yvec[0]][yvec[1]] ) );
+
+					//4. phi
+					W *= (vdot ( oldetf[xvec[0]][xvec[1]], oldetf[yvec[0]][yvec[1]] ) > 0.0f) ? 1.0f : -1.0f;
+
+					//5. t_cur(y)
+					vector(tcur, W*oldetf[yvec[0]][yvec[1]][0], W*oldetf[yvec[0]][yvec[1]][1], W*oldetf[yvec[0]][yvec[1]][2] );
+
+					vsum(tsum, tcur);
+				}
+			}
+			//normalizing tsum
+			vnorm(tsum);
+			vcopy(dst_etf_pixel, tsum);
+		}
+	}
+	for (i=0; i<w; i++)		delete [] oldetf[i];	delete [] oldetf;
+
+	float finish = clock();	
+	printf("Took %.2f seconds.\n", ((finish-start)/CLOCKS_PER_SEC ));
+}
 
 void get_flow_path(
 	V3DF** src_etf, 
@@ -429,6 +506,57 @@ void get_flow_path(
 	printf("fpath[0][0].sn = %3d, fpath[0][0].sn = %3d\n", dst_fpath[0][0].sn, dst_fpath[0][0].tn);
 
 	float finish = clock();	//�����ð�����
+	printf("Took %.2f seconds.\n", ((finish-start)/CLOCKS_PER_SEC ));
+}
+void get_flow_path(
+	cv::Mat &src_etf, 
+	cv::Mat &src_grad, 
+	FlowPath** dst_fpath, 
+	int w, int h, int threshold_S, int threshold_T
+)
+{
+	printf("SetFlowPath.. ");
+	float start = clock();
+
+	int i,j,k;
+
+	if ( dst_fpath==NULL ){
+		dst_fpath = new FlowPath *[w];
+		for (i=0; i<w; i++){
+			dst_fpath[i] = new FlowPath[h];
+		}
+	}
+	else{
+		for (i=0; i<w; i++)
+			for (j=0; j<h; j++)
+				dst_fpath[i][j].Init();
+	}
+
+	V3DF zerov = {0.0f, 0.0f, 0.0f};
+	V3DF tmp = {0.0f, 0.0f, 0.0f};
+	for (i=0; i<w; i++){
+		for (j=0; j<h; j++){
+			cv::Vec3f &src_etf_pixel = src_etf.at<cv::Vec3f>(j, i);
+			vcopy(tmp, src_etf_pixel);
+
+			if ( is_similar_vector(tmp, zerov, 0.000001f) ){
+				dst_fpath[i][j].sn = dst_fpath[i][j].tn = 0;
+				continue;
+			}
+
+			dst_fpath[i][j].sn = threshold_S;
+			if ( dst_fpath[i][j].Alpha )	delete [] dst_fpath[i][j].Alpha;
+			dst_fpath[i][j].Alpha = new V3DF[threshold_S];
+			cl_set_flow_at_point_S(src_etf, &(dst_fpath[i][j]), i, j, w, h, threshold_S);
+
+			if ( dst_fpath[i][j].Beta )		delete [] dst_fpath[i][j].Beta;
+			dst_fpath[i][j].Beta = new V3DF[threshold_T];
+			dst_fpath[i][j].tn = threshold_T;
+			cl_set_flow_at_point_T(src_grad, &(dst_fpath[i][j]), i, j, w, h, threshold_T);
+		}
+	}
+
+	float finish = clock();	
 	printf("Took %.2f seconds.\n", ((finish-start)/CLOCKS_PER_SEC ));
 }
 
@@ -570,6 +698,137 @@ void get_coherent_line(
 
 	printf("done\n");
 }
+void get_coherent_line(
+	cv::Mat &src_gray_im, cv::Mat &src_etf, FlowPath** src_fpath, cv::Mat &dst_imCL,
+ 	int w, int h, float threshold_T, float CL_tanh_he_thr,
+	float sigmaC, float sigmaM, float P, int iterations
+)
+{
+	printf("SetCoherentLine..");
+	int i,j,k;
+
+	float** oldim;
+	oldim = new float*[w];
+	for (int i=0; i<w; i++){
+		oldim[i] = new float[h];
+	}
+	for (int i=0; i<w; i++){
+		for (int j=0; j<h; j++){
+			oldim[i][j] = src_gray_im.at<float>(j, i);
+		}
+	}
+
+	// For Hg
+	int MaskSize = threshold_T;
+	float *Mc = new float[MaskSize];
+	float *Ms = new float[MaskSize];
+	float *DogMask = new float[MaskSize];
+	float sigmaS=sigmaC*1.6f;
+	// Dog mask;	f(t) = G(sigma_c)(t) - P*G(sigma_s)(t)
+	BuildGaussianMask(MaskSize,sigmaC,Mc);	//G(sigma_c)(t)
+	BuildGaussianMask(MaskSize,sigmaS,Ms);	//G(sigma_s)(t)
+	ScalarBuf(Ms,P,MaskSize);	//P*G(sigma_s)(t)
+	DifferenceBuf(DogMask,Mc,Ms,MaskSize);	//f(t)
+
+	float px,py,intensity;
+	float Hg,He;
+	float **clhg = new float*[w];
+	float **clhe = new float*[w];
+
+	for (i=0; i<w; i++){
+		clhg[i] = new float[h];
+		clhe[i] = new float[h];
+	}
+
+	for(int iter=0; iter<iterations; ++iter) {
+		// For He
+		for (i=0; i<w; i++){
+			for (j=0; j<h; j++){
+				clhg[i][j] = Hg = 0.0f;
+
+				if ( is_zero_vector(src_etf.at<cv::Vec3f>(j, i)) ){
+					continue;
+				}
+
+				// 1. Hg
+				if ( src_fpath[i][j].tn < threshold_T ){
+					for (k=0; k<src_fpath[i][j].tn; k++){
+						px = src_fpath[i][j].Beta[k][0];	py = src_fpath[i][j].Beta[k][1];
+						if ( px<0||px>=w || py<0||py>=h)	continue;
+						GetValAtPoint(oldim, w, h, px,py, &intensity);
+						Hg += (intensity*DogMask[k]);
+					}
+				}
+				else{
+					for (k=0; k<threshold_T; k++){
+						px = src_fpath[i][j].Beta[k][0];	py = src_fpath[i][j].Beta[k][1];
+						if ( px<0||px>=w || py<0||py>=h)	continue;
+						GetValAtPoint(oldim, w, h, px,py, &intensity);
+						Hg += (intensity*DogMask[k]);
+					}
+				}
+
+
+				clhg[i][j] = Hg;
+			}
+		}
+
+		float s, div,div2;
+		div = sqrt(2*PI)*sigmaM;
+		div2 = 2*sigmaM*sigmaM;
+		for (i=0; i<w; i++){
+			for (j=0; j<h; j++){
+				clhe[i][j] = 0.0f;
+
+				// S passing (Obama image 51.01 sec -> 12.89 sec)
+				if ( is_zero_vector(src_etf.at<cv::Vec3f>(j, i)) ){
+					dst_imCL.at<float>(j, i) = 1.0f;
+					continue;
+				}
+
+				// 2. He
+				//|		He(x) = (-S~+S) G(s) Hg(cx(s)) ds
+				//|	��� T�� ���� ���xDog filter
+				He = 0.0f;
+
+
+				for (k=0; k<src_fpath[i][j].sn; k++){
+					px = src_fpath[i][j].Alpha[k][0];	py = src_fpath[i][j].Alpha[k][1];
+					if ( px<0||px>=w || py<0||py>=h)	continue;
+					GetValAtPoint(clhg, w, h, px,py, &Hg);
+
+					//He += (GaussianMask[k]*Hg);
+					s =	sqrt((i-px)*(i-px) + (j-py)*(j-py));	// (i,j)~(px,py)
+					He += ( ( exp(-(s*s)/div2) / div )*Hg );
+				}
+
+				// 3. set line(0 or 1)
+				if ( He < 0 && 1.0f+tanh(He) < CL_tanh_he_thr )	// 0.997f or 1.0f
+					//if ( 1.0f+tanh(He)<srcCL_tanh_he_thr )	// 0.997f or 1.0f
+					dst_imCL.at<float>(j, i) = 0.0f;
+				else
+					dst_imCL.at<float>(j, i) = 1.0f;
+
+				// 4. set old im -> line����(�ݺ�����)
+				if (dst_imCL.at<float>(j, i)==0.0f)
+					oldim[i][j] = 0.0f;
+
+				clhe[i][j] = He;
+			}
+		}
+	}
+
+	delete [] Mc;		delete [] Ms;
+	delete [] DogMask;
+	for (i=0; i<w; i++){
+		delete [] clhg[i];
+		delete [] clhe[i];
+	}
+	delete [] clhg;		delete [] clhe;
+
+	printf("done\n");
+}
+
 
 void cl_set_flow_at_point_S(
 	V3DF** src_etf, FlowPath* dst_fpath,
@@ -677,6 +936,116 @@ void cl_set_flow_at_point_S(
 
 	for (i=0; i<my_n; i++)		delete [] alpha[i];	delete [] alpha;
 }
+void cl_set_flow_at_point_S(
+	cv::Mat &src_etf, FlowPath* dst_fpath,
+	int px, int py, int w, int h, int threshold_S /*, int* nPoints, V3DF *Alpha*/
+)
+{
+	float x,y, x_,y_;	//ù��, ����
+	V3DF etf_,  etf__;
+
+	cv::Vec3f &src_etf_pixel = src_etf.at<cv::Vec3f>(py, px);
+	vcopy(etf__, src_etf_pixel);
+
+	int nN, nP, i;
+	int init_n = threshold_S;
+	int my_n = 2;
+	V3DF **alpha = new V3DF*[my_n];
+	for (i=0; i<my_n; i++)
+		alpha[i] = new V3DF[init_n/2+1];
+
+	nP=nN=0;
+	x=px;	y=py;
+
+	float angle;
+	int threshold_Angle = 15.0f;
+	int threshold_Angle2 = 135.0f;
+
+	float sqrt2 = sqrt(2.0f);	//sqrt(2)��ŭ ����.
+	//-S
+	int limitation = 0;
+	
+	while ( nN < init_n/2 ){
+		if (limitation++ > 1000) break;
+
+		if ( x<0||x>=w||y<0||y>=h )	break;	//image ��
+
+		//1. �ش� ������ etf
+		V3DF_interpolate(src_etf, etf_, x, y, w, h);
+		//2. normalize
+
+		vnorm(etf_);
+		if ( is_zero_vector(etf_) )	break;
+
+		angle = angle_r(etf_,etf__)*180.0f/PI;
+		if ( angle > threshold_Angle2 ){
+			vnegate(etf_);
+		}
+		if ( angle > threshold_Angle ) {
+			//������ etf�� �̷�� ���� �Ӱ�ġ �̻��̸�
+			break;
+		}	
+
+		x_ = x-etf_[0];		y_ = y-etf_[1];
+
+		if ( x==x_ && y==y_ )	break;	// ���ѷ��� ����
+		if ( ((int) x != (int) x_) || ((int) y != (int) y_) )	// �ʹ� �����ϰ� ���� �ʱ� ����
+			vector( alpha[NEGATIVE][nN++], x_, y_, 0.0f );
+		x=x_;	y=y_;
+
+		vcopy(etf__,etf_);
+	}
+
+	//+S
+	x=px;	y=py;
+	// vcopy(etf__, src_etf[px][py]);
+	vcopy(etf__, src_etf.at<cv::Vec3f>(py, px));
+	limitation = 0;
+	while ( nP<init_n/2 ){
+		if (limitation++ > 1000) break;
+
+		if ( x<0||x>=w||y<0||y>=h )	break;	//image ��
+
+		//1. �ش� ������ etf
+		V3DF_interpolate(src_etf, etf_, x, y, w, h);
+		//2. normalize
+		vnorm(etf_);
+		if ( is_zero_vector(etf_) )	break;
+
+		angle = angle_r(etf_,etf__)*180.0f/PI;
+		if ( angle > threshold_Angle2 ){
+			vnegate(etf_);
+		}
+		if ( angle > threshold_Angle )	//������ etf�� �̷�� ���� �Ӱ�ġ �̻��̸�
+			break;
+
+		x_ = x+etf_[0];		y_ = y+etf_[1];
+		if ( x==x_ && y==y_ )	break;	// ���ѷ��� ����
+		if ( ((int) x != (int) x_) || ((int) y != (int) y_) )	// �ʹ� �����ϰ� ���� �ʱ� ����
+			vector( alpha[POSITIVE][nP++], x_, y_, 0.0f );
+		x=x_;	y=y_;
+
+		vcopy(etf__,etf_);
+	}
+
+	dst_fpath->sn = nN+nP+1;
+	if ( dst_fpath->sn < 10 ){
+		dst_fpath->sn = 0;
+		for (i=0; i<2; i++)		delete [] alpha[i];	delete [] alpha;
+		return;
+	}
+
+	//���� alpha(2D) -> Alpha(1D)(-S ~ +S)
+	for (i=0; i<init_n; i++)	vzero( dst_fpath->Alpha[i] );	//0. �ʱ�ȭ
+	for (i=0; i<nN; i++)	
+		vcopy( dst_fpath->Alpha[i], alpha[NEGATIVE][nN-1-i] );	//1. negative ��
+	vector(dst_fpath->Alpha[i], px,py,0.0f);	//2. �߽ɰ�
+	int n=nN+1;	//���ݱ��� ���ǵ� Alpha ����
+	for (i=0; i<nP; i++)	
+		vcopy( dst_fpath->Alpha[n+i], alpha[POSITIVE][i] );	//3. positive ��
+
+	for (i=0; i<my_n; i++)		delete [] alpha[i];	delete [] alpha;
+}
 
 void cl_set_flow_at_point_T(
 	V3DF** src_grad, FlowPath* dst_fpath,
@@ -693,6 +1062,64 @@ void cl_set_flow_at_point_T(
 	nP=nN=0;
 	x=px;	y=py;
 	vcopy(grad_, src_grad[px][py]);
+	vnorm(grad_);	//normalize
+
+	if ( is_zero_vector(grad_) ){
+		dst_fpath->tn = 1;
+		vector(dst_fpath->Beta[0], px,py,0.0f);
+		for (i=0; i<2; i++)
+			delete [] beta[i];
+		delete [] beta;
+		return;
+	}
+
+	//-T
+	while ( nN < (init_n/2) ){
+		if ( x<0||x>=w||y<0||y>=h )	break;	
+		x_ = x-grad_[0];
+		y_ = y-grad_[1];
+		vector( beta[NEGATIVE][nN++], x_,y_,grad_[2]);
+		x=x_;	y=y_;
+	}
+
+	//+T
+	x=px;	y=py;
+	while ( nP < (init_n/2) ){
+		if ( x<0||x>=w||y<0||y>=h )	break;	//image ��
+
+		x_ = x+grad_[0];
+		y_ = y+grad_[1];
+		vector( beta[POSITIVE][nP++], x_,y_,grad_[2]);
+		x=x_;	y=y_;
+	}
+
+	//���� beta(2D) -> Beta(1D)(-T ~ +T)
+	for (i=0; i<init_n; i++)	vzero( dst_fpath->Beta[i] );	//0. �ʱ�ȭ
+	for (i=0; i<nN; i++)	vcopy( dst_fpath->Beta[i], beta[NEGATIVE][nN-1-i] );		//1. negative ��
+	vector(dst_fpath->Beta[i], px,py,0.0f);	//2. �߽ɰ�
+	int n=nN+1;	//���ݱ��� ���ǵ� Beta ����
+	for (i=0; i<nP; i++)	vcopy( dst_fpath->Beta[n+i], beta[POSITIVE][i] );	//3. positive ��
+	dst_fpath->tn = nN+nP+1;
+
+	for (i=0; i<2; i++)
+		delete [] beta[i];
+	delete [] beta;
+}
+void cl_set_flow_at_point_T(
+	cv::Mat &src_grad, FlowPath* dst_fpath,
+	int px, int py, int w, int h, int threshold_T /*int *nPoints, V3DF *Beta*/
+) {
+	float x,y, x_,y_;
+	V3DF grad_;
+	int nN, nP, i;
+	int init_n = threshold_T;
+	V3DF **beta = new V3DF*[2];
+	for (i=0; i<2; i++)
+		beta[i] = new V3DF[init_n];
+
+	nP=nN=0;
+	x=px;	y=py;
+	vcopy(grad_, src_grad.at<cv::Vec3f>(py, px));
 	vnorm(grad_);	//normalize
 
 	if ( is_zero_vector(grad_) ){
@@ -758,6 +1185,49 @@ void V3DF_interpolate(
 	vcopy(etfB, src[lrx][lry]);
 	vcopy(etfC, src[ulx][uly]);
 	vcopy(etfD, src[lrx][uly]);
+
+	//distA: A~(px,py) �Ÿ�
+	//eA: etf at A
+	//1. distB*etfA + distA*etfB
+	vcopy(t1,etfA);	vcopy(t2,etfB);
+	vscale(t1,lrx-px);	vscale(t2,px-ulx);
+	vadd(e1,t1,t2);
+	//2. distD*etfC + distC*etfD
+	vcopy(t1,etfC);	vcopy(t2,etfD);
+	vscale(t1,lrx-px);	vscale(t2,px-ulx);
+	vadd(e2,t1,t2);
+	//3. distC*1 + distA*2
+	vcopy(t1,e1);		vcopy(t2,e2);
+	vscale(t1,uly-py);	vscale(t2,py-lry);
+	vadd(dst,t1,t2);
+
+	vnorm(dst);
+}
+void V3DF_interpolate(
+	cv::Mat &src, V3DF dst, 
+	float px, float py, int w, int h
+) {
+	int ulx,uly,lrx,lry;		//	upper-left (x, y), lower-right (x, y)
+	V3DF etfA,etfB,etfC,etfD;	//	etf at A,B,C,D
+	V3DF e1,e2,t1,t2;
+
+	if (px+1>=w || py+1>=h){
+		vector(dst, 0.0f,0.0f,0.0f);
+		return;
+	}
+
+	ulx = (int)(px);
+	uly = (int)(py+1);
+	lrx = (int)(px+1);
+	lry = (int)(py);
+	// vcopy(etfA, src[ulx][lry]);
+	vcopy(etfA, src.at<cv::Vec3f>(lry, ulx));
+	// vcopy(etfB, src[lrx][lry]);
+	vcopy(etfB, src.at<cv::Vec3f>(lry, lrx));
+	// vcopy(etfC, src[ulx][uly]);
+	vcopy(etfC, src.at<cv::Vec3f>(uly, ulx));
+	// vcopy(etfD, src[lrx][uly]);
+	vcopy(etfD, src.at<cv::Vec3f>(uly, lrx));
 
 	//distA: A~(px,py) �Ÿ�
 	//eA: etf at A

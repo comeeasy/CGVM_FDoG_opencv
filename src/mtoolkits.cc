@@ -682,6 +682,13 @@ inline void vcross ( V3DF vc, V3DF v1, V3DF v2 )
 	vc[2] = v1[0]*v2[1] - v1[1]*v2[0];
 }
 
+void vcross ( cv::Vec3f &vc, V3DF v1, V3DF v2 )
+{
+	vc[0] = v1[1]*v2[2] - v1[2]*v2[1];
+	vc[1] = v1[2]*v2[0] - v1[0]*v2[2];
+	vc[2] = v1[0]*v2[1] - v1[1]*v2[0];
+}
+
 void vcross ( V3DD vc, V3DD v1, V3DD v2 )
 {
 	vc[0] = v1[1]*v2[2] - v1[2]*v2[1];
@@ -1039,6 +1046,11 @@ double angle_r ( V3DD p1, V3DD p2, V3DD p3 )
 
 
 int is_zero_vector ( V3DF v )
+{
+	return ( (v[0] == 0.0f) && (v[1] == 0.0f) && (v[2] == 0.0f) );
+}
+
+int is_zero_vector ( cv::Vec3f &v )
 {
 	return ( (v[0] == 0.0f) && (v[1] == 0.0f) && (v[2] == 0.0f) );
 }
@@ -4346,4 +4358,18 @@ void vzero( cv::Vec3f &v )
 	v[0] = 0.0f;
 	v[1] = 0.0f;
 	v[2] = 0.0f;
+}
+
+void vcopy( V3DF dst, cv::Vec3f &src ) 
+{
+	dst[0] = src[0];
+	dst[1] = src[1];
+	dst[2] = src[2];
+}
+
+void vcopy( cv::Vec3f &dst, V3DF src )
+{
+	dst[0] = src[0];
+	dst[1] = src[1];
+	dst[2] = src[2];
 }

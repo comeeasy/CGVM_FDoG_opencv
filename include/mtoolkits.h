@@ -81,6 +81,9 @@ void vscale ( V3DD tar, double t, V3DD src );
 void vscale ( V3DF tar, float t, V3DF src );
 
 void vzero( cv::Vec3f &v );
+void vcross ( cv::Vec3f &vc, V3DF v1, V3DF v2 );
+void vcopy( V3DF dst, cv::Vec3f &src );
+void vcopy( cv::Vec3f &dst, V3DF src );
 
 void vcopy ( V3DF des, V3DF src );
 void vcopy ( V3DD des, V3DD src );
@@ -187,6 +190,7 @@ int is_same_vector ( V3DD v1, V3DD v2 );
 int is_same_vector ( V3DI v1, V3DI v2 );
 int is_same_vector4i ( V4DI v1, V4DI v2 );
 int is_zero_vector ( V3DF v );
+int is_zero_vector ( cv::Vec3f &v );
 int is_zero_vector ( V3DD v );
 int is_near_zero ( float val, float thr );
 int is_near_zero ( double val, double thr );
