@@ -40,6 +40,7 @@ void apply_FBL_filter(
 		// 1. Ce : linear bilateral filter along the edge(or ETF)
 		div_g	= sqrt(2*PI)*sigma_e;	div_g2	= 2*sigma_e*sigma_e;
 		div_s	= sqrt(2*PI)*gamma_e;	div_s2	= 2*gamma_e*gamma_e;
+
 		for (i=0; i<w; i++){
 			for (j=0; j<h; j++){
 				normal_term = 0.0f;	vzero(Ce);
@@ -1048,6 +1049,93 @@ void get_ETF(
 	float finish = clock();	
 	printf("Took %.2f seconds.\n", ((finish-start)/CLOCKS_PER_SEC ));
 }
+void __get_ETF_partial(int start, int end, int w, int h, int nbhd, float r, cv::Mat& src_grad, cv::Mat& dst_etf, V3DF** oldetf) {
+	V3DI xvec,yvec;
+	V3DF tcur,tsum;
+	float W;
+
+    for (int i = start; i < end; i++) {
+        for (int j = 0; j < h; j++) {
+            cv::Vec3f &src_grad_pixel = src_grad.at<cv::Vec3f>(j, i);
+            cv::Vec3f &dst_etf_pixel = dst_etf.at<cv::Vec3f>(j, i);
+            if (src_grad_pixel[2] == 0.0f) {
+                vzero(dst_etf_pixel);
+                continue;
+            }
+
+            vectori(xvec, i,j,0);
+			vzero(tsum);
+            for (int a = -nbhd; a <= nbhd; a++) {
+                for (int b = -nbhd; b <= nbhd; b++) {
+                    vectori(yvec, i+a, j+b, 0);
+                    // Boundary checks and corrections for yvec
+                    if (yvec[0] < 0) yvec[0] *= -1;
+                    else if (yvec[0] >= w) yvec[0] = w - (yvec[0] - (w - 1));
+                    if (yvec[1] < 0) yvec[1] *= -1;
+                    else if (yvec[1] >= h) yvec[1] = h - (yvec[1] - (h - 1));
+
+                    cv::Vec3f &src_grad_pixel_yvec = src_grad.at<cv::Vec3f>(yvec[1], yvec[0]);
+                    cv::Vec3f &src_grad_pixel_xvec = src_grad.at<cv::Vec3f>(xvec[1], xvec[0]);
+
+                    if (src_grad_pixel_yvec[2] == 0.0f) continue;
+                    if (pdist2(xvec, yvec) > r) continue;
+
+                    //2. w_m = 0.5 (1 + tanh[(g(y) - g(x))])
+					W = 0.5f * (1.0f + (src_grad_pixel_yvec[2] - src_grad_pixel_xvec[2]));
+
+					//3. w_d = | etf(x) DOT etf(y) |
+					W *= fabs( vdot( oldetf[xvec[0]][xvec[1]], oldetf[yvec[0]][yvec[1]] ) );
+
+					//4. phi
+					W *= (vdot ( oldetf[xvec[0]][xvec[1]], oldetf[yvec[0]][yvec[1]] ) > 0.0f) ? 1.0f : -1.0f;
+
+					//5. t_cur(y)
+					vector(tcur, W*oldetf[yvec[0]][yvec[1]][0], W*oldetf[yvec[0]][yvec[1]][1], W*oldetf[yvec[0]][yvec[1]][2] );
+
+					vsum(tsum, tcur);
+                }
+            }
+            vnorm(tsum);
+            vcopy(dst_etf_pixel, tsum);
+        }
+    }
+}
+void get_ETF(
+	cv::Mat &src_grad, cv::Mat &dst_etf,
+	int nbhd, int w, int h, int num_workers
+)
+{
+	printf("GetETF.. ");
+	int i,j,a,b;
+	V3DI xvec,yvec;
+	V3DF tcur,tsum;
+	float W;
+	float r = (float)nbhd;
+
+	V3DF **oldetf = new V3DF *[w];
+	for (i=0; i<w; i++){
+		oldetf[i] = new V3DF[h];
+		for (j=0; j<h; j++) {
+			cv::Vec3f &dst_etf_pixel = dst_etf.at<cv::Vec3f>(j, i);
+			vcopy(oldetf[i][j], dst_etf_pixel);	
+		}
+	}
+
+    std::vector<std::thread> threads(num_workers);
+    int slice = w / num_workers;
+
+	for (int t = 0; t < num_workers; t++) {
+        int start = t * slice;
+        int end = (t == num_workers - 1) ? w : (t + 1) * slice;
+        threads[t] = std::thread(__get_ETF_partial, start, end, w, h, nbhd, r, std::ref(src_grad), std::ref(dst_etf), std::ref(oldetf));
+    }
+
+    for (auto &thread : threads) {
+        thread.join();
+    }
+
+	for (i=0; i<w; i++)		delete [] oldetf[i];	delete [] oldetf;
+}
 cv::Mat get_ETF(
 	cv::Mat &src_grad, cv::Mat &src_tangent,
 	int nbhd, int iteration
@@ -1063,6 +1151,27 @@ cv::Mat get_ETF(
 	for(int i=0; i<iteration; ++i) {
 		get_ETF(src_grad, etf, nbhd, w, h);
 	}
+	return etf;
+}
+cv::Mat get_ETF(
+	cv::Mat &src_grad, cv::Mat &src_tangent,
+	int nbhd, int iteration, size_t num_workers
+)
+{
+	if (src_grad.cols != src_tangent.cols || src_grad.rows != src_tangent.rows) {
+		printf("src_grad and src_tangent must have same shape. (width and height)\n");
+		exit(1);
+	}
+
+	int w = src_grad.cols, h = src_tangent.rows;
+	cv::Mat etf = src_tangent.clone();
+	for(int i=0; i<iteration; ++i) {
+		float start = clock();
+		get_ETF(src_grad, etf, nbhd, w, h, num_workers);
+		float finish = clock();	
+		printf("Took %.2f seconds.\n", ((finish-start)/CLOCKS_PER_SEC ));
+	}
+	
 	return etf;
 }
 
@@ -1163,6 +1272,70 @@ void get_flow_path(
 
 	float finish = clock();	
 	printf("Took %.2f seconds.\n", ((finish-start)/CLOCKS_PER_SEC ));
+}
+void __get_flow_path_partial(int start, int end, int h, int threshold_S, int threshold_T, cv::Mat &src_etf, cv::Mat &src_grad, FlowPath** dst_fpath, int num_workers) {
+    V3DF zerov = {0.0f, 0.0f, 0.0f};
+    V3DF tmp = {0.0f, 0.0f, 0.0f};
+
+    for (int i = start; i < end; i++) {
+        for (int j = 0; j < h; j++) {
+            cv::Vec3f &src_etf_pixel = src_etf.at<cv::Vec3f>(j, i);
+            vcopy(tmp, src_etf_pixel);
+
+            if (is_similar_vector(tmp, zerov, 0.000001f)) {
+                dst_fpath[i][j].sn = dst_fpath[i][j].tn = 0;
+                continue;
+            }
+
+            dst_fpath[i][j].sn = threshold_S;
+            if (dst_fpath[i][j].Alpha) delete[] dst_fpath[i][j].Alpha;
+            dst_fpath[i][j].Alpha = new V3DF[threshold_S];
+            cl_set_flow_at_point_S(src_etf, &(dst_fpath[i][j]), i, j, src_etf.cols, src_etf.rows, threshold_S);
+
+            dst_fpath[i][j].tn = threshold_T;
+            if (dst_fpath[i][j].Beta) delete[] dst_fpath[i][j].Beta;
+            dst_fpath[i][j].Beta = new V3DF[threshold_T];
+            cl_set_flow_at_point_T(src_grad, &(dst_fpath[i][j]), i, j, src_grad.cols, src_grad.rows, threshold_T);
+        }
+    }
+}
+void get_flow_path(
+	cv::Mat &src_etf, 
+	cv::Mat &src_grad, 
+	FlowPath** dst_fpath, 
+	int w, int h, int threshold_S, int threshold_T,
+	int num_workers
+)
+{
+	printf("SetFlowPath.. ");
+    float start = clock();
+
+    if (dst_fpath == nullptr) {
+        dst_fpath = new FlowPath *[w];
+        for (int i = 0; i < w; i++) {
+            dst_fpath[i] = new FlowPath[h];
+        }
+    } else {
+        for (int i = 0; i < w; i++)
+            for (int j = 0; j < h; j++)
+                dst_fpath[i][j].Init();
+    }
+
+    std::vector<std::thread> threads(num_workers);
+    int slice = w / num_workers;
+
+    for (int t = 0; t < num_workers; t++) {
+        int start = t * slice;
+        int end = (t == num_workers - 1) ? w : (t + 1) * slice;
+        threads[t] = std::thread(__get_flow_path_partial, start, end, h, threshold_S, threshold_T, std::ref(src_etf), std::ref(src_grad), dst_fpath, num_workers);
+    }
+
+    for (auto &thread : threads) {
+        thread.join();
+    }
+
+    float finish = clock();
+    printf("Took %.2f seconds.\n", ((finish - start) / CLOCKS_PER_SEC));
 }
 
 void get_coherent_line(
@@ -1433,6 +1606,97 @@ void get_coherent_line(
 
 	printf("done\n");
 }
+void __get_coherent_line_partial(int start, int end, int h, float** oldim, FlowPath** src_fpath, float *DogMask, float sigmaM, float threshold_T, float CL_tanh_he_thr, cv::Mat &dst_imCL) {
+    const float div = sqrt(2 * M_PI) * sigmaM;
+    const float div2 = 2 * sigmaM * sigmaM;
+
+    for (int i = start; i < end; i++) {
+        for (int j = 0; j < h; j++) {
+            float Hg = 0.0f, He = 0.0f;
+
+            // Calculate Hg
+            for (int k = 0; k < std::min((int)threshold_T, src_fpath[i][j].tn); k++) {
+                float px = src_fpath[i][j].Beta[k][0];
+                float py = src_fpath[i][j].Beta[k][1];
+                if (px < 0 || px >= end || py < 0 || py >= h) continue;
+                float intensity;
+                GetValAtPoint(oldim, end, h, px, py, &intensity);
+                Hg += (intensity * DogMask[k]);
+            }
+
+            // Calculate He
+            for (int k = 0; k < src_fpath[i][j].sn; k++) {
+                float px = src_fpath[i][j].Alpha[k][0];
+                float py = src_fpath[i][j].Alpha[k][1];
+                if (px < 0 || px >= end || py < 0 || py >= h) continue;
+                float dist = sqrt((i - px) * (i - px) + (j - py) * (j - py));
+                He += (exp(-(dist * dist) / div2) / div) * Hg;
+            }
+
+            // Set line
+            if (He < 0 && 1.0f + tanh(He) < CL_tanh_he_thr)
+                dst_imCL.at<float>(j, i) = 0.0f;
+            else
+                dst_imCL.at<float>(j, i) = 1.0f;
+
+            // Update old image
+            if (dst_imCL.at<float>(j, i) == 0.0f)
+                oldim[i][j] = 0.0f;
+        }
+    }
+}
+void get_coherent_line(
+	cv::Mat &src_gray_im, cv::Mat &src_etf, FlowPath** src_fpath, cv::Mat &dst_imCL,
+ 	int w, int h, float threshold_T, float CL_tanh_he_thr,
+	float sigmaC, float sigmaM, float P, int iterations,
+	int num_workers
+)
+{
+	printf("SetCoherentLine.. ");
+    float** oldim = new float*[w];
+    for (int i = 0; i < w; i++) {
+        oldim[i] = new float[h];
+        for (int j = 0; j < h; j++) {
+            oldim[i][j] = src_gray_im.at<float>(j, i);
+        }
+    }
+
+    // Dog mask calculation
+    int MaskSize = threshold_T;
+    float *Mc = new float[MaskSize];
+    float *Ms = new float[MaskSize];
+    float *DogMask = new float[MaskSize];
+    float sigmaS = sigmaC * 1.6f;
+    BuildGaussianMask(MaskSize, sigmaC, Mc);
+    BuildGaussianMask(MaskSize, sigmaS, Ms);
+    ScalarBuf(Ms, P, MaskSize);
+    DifferenceBuf(DogMask, Mc, Ms, MaskSize);
+
+    std::vector<std::thread> threads(num_workers);
+    int slice = w / num_workers;
+
+    for (int iter = 0; iter < iterations; ++iter) {
+        for (int t = 0; t < num_workers; t++) {
+            int start = t * slice;
+            int end = (t == num_workers - 1) ? w : (t + 1) * slice;
+            threads[t] = std::thread(__get_coherent_line_partial, start, end, h, oldim, src_fpath, DogMask, sigmaM, threshold_T, CL_tanh_he_thr, std::ref(dst_imCL));
+        }
+
+        for (auto &thread : threads) {
+            thread.join();
+        }
+    }
+
+    delete [] Mc;
+    delete [] Ms;
+    delete [] DogMask;
+    for (int i = 0; i < w; i++) {
+        delete [] oldim[i];
+    }
+    delete [] oldim;
+
+    printf("done\n");
+}
 cv::Mat get_coherent_line(
 	cv::Mat &src_gray_im, cv::Mat &src_etf, FlowPath** src_fpath,
  	float threshold_T, float CL_tanh_he_thr,
@@ -1446,6 +1710,23 @@ cv::Mat get_coherent_line(
 	int w = src_gray_im.cols, h = src_gray_im.rows;
 	cv::Mat imCL = cv::Mat::zeros(h, w, CV_32F);
 	get_coherent_line(src_gray_im, src_etf, src_fpath, imCL, w, h, threshold_T, CL_tanh_he_thr, sigmaC, sigmaM, P, iterations);
+
+	return imCL;
+}
+cv::Mat get_coherent_line(
+	cv::Mat &src_gray_im, cv::Mat &src_etf, FlowPath** src_fpath,
+ 	float threshold_T, float CL_tanh_he_thr,
+	float sigmaC, float sigmaM, float P, int iterations,
+	int num_workers
+)
+{
+	if (src_gray_im.rows != src_etf.rows || src_gray_im.cols != src_etf.cols) {
+		printf("src_gray and src_etf must have shape shape (width & height)\n");
+		exit(1);
+	}
+	int w = src_gray_im.cols, h = src_gray_im.rows;
+	cv::Mat imCL = cv::Mat::zeros(h, w, CV_32F);
+	get_coherent_line(src_gray_im, src_etf, src_fpath, imCL, w, h, threshold_T, CL_tanh_he_thr, sigmaC, sigmaM, P, iterations, num_workers);
 
 	return imCL;
 }

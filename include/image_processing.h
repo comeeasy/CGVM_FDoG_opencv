@@ -4,6 +4,8 @@
 #define __IMAGE_PROCESSING_H__
 
 #include <time.h>
+#include <thread>
+#include <vector>
 
 #include "mtoolkits.h"
 #include "common_func.h"
@@ -108,9 +110,17 @@ void get_ETF(
 	cv::Mat &src_grad, cv::Mat &dst_etf,
 	int nbhd, int w, int h
 );
+void get_ETF(
+	cv::Mat &src_grad, cv::Mat &dst_etf,
+	int nbhd, int w, int h, int num_workers
+);
 cv::Mat get_ETF(
 	cv::Mat &src_grad, cv::Mat &src_tangent,
 	int nbhd, int iteration
+);
+cv::Mat get_ETF(
+	cv::Mat &src_grad, cv::Mat &src_tangent,
+	int nbhd, int iteration, size_t num_workers
 );
 
 void get_flow_path(
@@ -125,6 +135,13 @@ void get_flow_path(
 	FlowPath** dst_fpath, 
 	int w, int h, int threshold_S, int threshold_T
 );
+void get_flow_path(
+	cv::Mat &src_etf, 
+	cv::Mat &src_grad, 
+	FlowPath** dst_fpath, 
+	int w, int h, int threshold_S, int threshold_T,
+	int num_workers
+);
 
 void get_coherent_line(
 	float** src_gray_im, V3DF** src_etf, FlowPath** src_fpath, float** dst_imCL,
@@ -136,10 +153,22 @@ void get_coherent_line(
  	int w, int h, float threshold_T, float CL_tanh_he_thr,
 	float sigmaC, float sigmaM, float P, int iterations
 );
+void get_coherent_line(
+	cv::Mat &src_gray_im, cv::Mat &src_etf, FlowPath** src_fpath, cv::Mat &dst_imCL,
+ 	int w, int h, float threshold_T, float CL_tanh_he_thr,
+	float sigmaC, float sigmaM, float P, int iterations,
+	int num_workers
+);
 cv::Mat get_coherent_line(
 	cv::Mat &src_gray_im, cv::Mat &src_etf, FlowPath** src_fpath,
  	float threshold_T, float CL_tanh_he_thr,
 	float sigmaC, float sigmaM, float P, int iterations
+);
+cv::Mat get_coherent_line(
+	cv::Mat &src_gray_im, cv::Mat &src_etf, FlowPath** src_fpath,
+ 	float threshold_T, float CL_tanh_he_thr,
+	float sigmaC, float sigmaM, float P, int iterations,
+	int num_workers
 );
 
 void cl_set_flow_at_point_S(

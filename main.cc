@@ -69,7 +69,9 @@ int main(int argc, char** argv ) {
 	std::cout << "tangent doen." << std::endl;
 
 	int iter_etf = 2;
-	cv::Mat etf = get_ETF(grad, tangent, nbhd, iter_etf);
+	// cv::Mat etf = get_ETF(grad, tangent, nbhd, iter_etf);
+	size_t num_workers = 32;
+	cv::Mat etf = get_ETF(grad, tangent, nbhd, iter_etf, num_workers);
 	std::cout << "etf done." << std::endl;
 
 	FlowPath** fpath = new FlowPath*[w];
@@ -82,10 +84,10 @@ int main(int argc, char** argv ) {
 			vpath[i][j].Init();
 		}
 	}
-	get_flow_path(etf, grad, fpath, w, h, threshold_S, threshold_T);
+	get_flow_path(etf, grad, fpath, w, h, threshold_S, threshold_T, num_workers);
 	std::cout << "flow path done." << std::endl;
 
-	cv::Mat imCL = get_coherent_line(img_gray, etf, fpath, threshold_T, CL_tanh_he_thr, CL_sigma_c_line_width, CL_sigma_m_line_coherence, P, CL_iterations);
+	cv::Mat imCL = get_coherent_line(img_gray, etf, fpath, threshold_T, CL_tanh_he_thr, CL_sigma_c_line_width, CL_sigma_m_line_coherence, P, CL_iterations, num_workers);
 	std::cout << "coherent line done." << std::endl;
 	
 	cv::Mat infodraw_img = cv::imread(infodraw_img_path, cv::IMREAD_COLOR);
@@ -157,7 +159,7 @@ int main(int argc, char** argv ) {
 
 	// image save
 	std::filesystem::path input_file_path(input_img_path);
-	std::filesystem::path base_output_path("../results");
+	std::filesystem::path base_output_path("results");
 	std::string base_name = input_file_path.stem().string();
 
 	std::filesystem::path output_dir = base_output_path / base_name;
@@ -180,7 +182,7 @@ int main(int argc, char** argv ) {
 	cv::imwrite(final_path, etf * 255);
 	std::cout << final_path << " is saved." << std::endl;
 
-    cv::waitKey(0);
+    // cv::waitKey(0);
 
 	for(int i=0; i<w; ++i) {
 		delete [] fpath[i];
