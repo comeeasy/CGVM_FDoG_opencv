@@ -60,7 +60,7 @@ void RGBtoLAB(float iR, float iG, float iB, float *oL, float *oa, float *ob){
 	g = g * 100;
 	b = b * 100;
 
-	//Observer. = 2��, Illuminant = D65
+	//Observer. = 2°, Illuminant = D65
 	x = r * 0.4124 + g * 0.3576 + b * 0.1805;
 	y = r * 0.2126 + g * 0.7152 + b * 0.0722;
 	z = r * 0.0193 + g * 0.1192 + b * 0.9505;
@@ -179,4 +179,160 @@ void LABtoRGB(float iL, float ia, float ib, float *oR, float *oG, float *oB){
 	}
 	else
 		(*oR) = b;
+}
+
+void conv_RGBtoLUV(V3DF** buf, int width, int height)		//RGB -> LUV
+{
+	conv_RGBtoXYZ(buf, width, height);	//RGB->XYZ
+	conv_XYZtoLUV(buf, width, height);	//XYZ->LUV
+}
+
+void conv_LUVtoRGB(V3DF** buf, int width, int height)		//LUV -> RGB
+{
+	conv_LUVtoXYZ(buf, width, height);	//LUV->XYZ
+	conv_XYZtoRGB(buf, width, height);	//XYZ->RGB
+}
+
+void conv_RGBtoXYZ(V3DF** buf, int width, int height)		//RGB -> XYZ
+{
+	int i,j;
+
+	for (i=0; i<width; i++){
+		for (j=0; j<height; j++){
+			RGBtoXYZ(buf[i][j][R_], buf[i][j][G_], buf[i][j][B_], &buf[i][j][X], &buf[i][j][Y], &buf[i][j][Z]);			
+		}
+	}
+}
+
+void conv_XYZtoRGB(V3DF** buf, int width, int height)		//XYZ -> RGB
+{
+	int i,j;
+
+	for (i=0; i<width; i++){
+		for (j=0; j<height; j++){
+			XYZtoRGB(buf[i][j][X], buf[i][j][Y], buf[i][j][Z], &buf[i][j][R_], &buf[i][j][G_], &buf[i][j][B_]);
+		}
+	}
+}
+
+void conv_XYZtoLUV(V3DF** buf, int width, int height)		//XYZ -> LUV
+{
+	int i,j;
+
+	for (i=0; i<width; i++){
+		for (j=0; j<height; j++){
+			XYZtoLUV(buf[i][j][X], buf[i][j][Y], buf[i][j][Z], &buf[i][j][X], &buf[i][j][Y], &buf[i][j][Z]);
+		}
+	}
+}
+
+void conv_LUVtoXYZ(V3DF** buf, int width, int height)		//LUV -> XYZ
+{
+	int i,j;
+
+	for (i=0; i<width; i++){
+		for (j=0; j<height; j++){
+			LUVtoXYZ(buf[i][j][X], buf[i][j][Y], buf[i][j][Z], &buf[i][j][X], &buf[i][j][Y], &buf[i][j][Z]);
+		}
+	}
+}
+
+void RGBtoXYZ(float iR, float iG, float iB, float *oX, float *oY, float *oZ)
+{
+	V3DF res;
+	V3DF iRGB;		//vector3(iRGB, iR, iG, iB);
+	vector(iRGB, iR, iG, iB);
+
+	Matrix3DF m_RGBtoXYZ = {0.607f, 0.174f, 0.200f, 0.299f, 0.587f, 0.114f, 0.000f, 0.066f, 1.116f};
+
+	// m_multi_v(res, m_RGBtoXYZ, iRGB);
+	mult_mat_pt_3(res, m_RGBtoXYZ, iRGB);
+
+	(*oX) = res[X];
+	(*oY) = res[Y];
+	(*oZ) = res[Z];
+}
+
+void XYZtoRGB(float iX, float iY, float iZ, float *oR, float *oG, float *oB)
+{
+	V3DF res;
+	V3DF iXYZ;		vector(iXYZ, iX, iY, iZ);
+
+	Matrix3DF m_XYZtoRGB = {1.91046f, -0.53394f, -0.287834f, -0.984436f, 1.9985f, -0.027726f, 0.0582193f, -0.118191f, 0.897697f};
+
+	// m_multi_v(res, m_XYZtoRGB, iXYZ);
+	mult_mat_pt_3(res, m_XYZtoRGB, iXYZ);
+
+	(*oR) = res[X];
+	(*oG) = res[Y];
+	(*oB) = res[Z];
+}
+
+void XYZtoLUV(float iX, float iY, float iZ, float *oL, float *oU, float *oV)
+{
+	float x0,y0,z0;
+	float u0,v0;
+
+	x0 = 0.98072;
+	y0 = 1.00000;
+	z0 = 1.18225;
+	/*x0 = 1.00000;
+	y0 = 1.00000;
+	z0 = 1.00000;*/
+
+	u0 = 4.0f*x0 / (x0 + 15.0f*y0 + 3.0f*z0);
+	v0 = 9.0f*y0 / (x0 + 15.0f*y0 + 3.0f*z0);
+
+	float u_,v_;
+	if ( (iX + 15.0f*iY + 3.0f*iZ)==0.0f )
+		u_ = 0.0f;
+	else
+		u_ = 4.0f*iX / (iX + 15.0f*iY + 3.0f*iZ);
+
+	if ( (iX + 15.0f*iY + 3.0f*iZ)==0.0f )
+		v_ = 0.0f;
+	else
+		v_ = 9.0f*iY / (iX + 15.0f*iY + 3.0f*iZ);
+
+	if (iY/y0 >= 0.008856)
+		(*oL) = 25.0f * pow ( 100.0f * (iY/y0), 1.0f/3.0f ) - 16.0f;
+	else if (iY/y0 < 0.008856)
+		(*oL) = 903.3f * (iY/y0);
+
+	(*oU) = 13.0f*(*oL)*(u_ - u0);
+	(*oV) = 13.0f*(*oL)*(v_ - v0);
+//	(*oU) = (*oL);
+//	(*oV) = (*oL);
+}
+
+void LUVtoXYZ(float iL, float iU, float iV, float *oX, float *oY, float *oZ)
+{
+	float x0,y0,z0;
+	float u0,v0;
+
+	x0 = 0.98072;
+	y0 = 1.00000;
+	z0 = 1.18225;
+
+	u0 = 4.0f*x0 / (x0 + 15.0f*y0 + 3.0f*z0);
+	v0 = 9.0f*y0 / (x0 + 15.0f*y0 + 3.0f*z0);
+
+	float u_ = iU/(13.0f*iL) + u0;
+	float v_ = iV/(13.0f*iL) + v0;
+
+	(*oY) = (y0/100.0f) * pow( (iL+16.0f) / 25.0f, 3.0f );
+	(*oX) = ( (9.0f*u_)/(4.0f*v_) ) * (*oY);
+	(*oZ) = (*oY) * ( (12.0f - 3.0f*u_ - 20.0f*v_) / (4.0f*v_) );
+}
+
+void LUVtoRGB(float iL, float iU, float iV, float *oR, float *oG, float *oB)
+{
+	LUVtoXYZ(iL,iU,iV, oR,oG,oB);
+	XYZtoRGB((*oR),(*oG),(*oB), oR,oG,oB);
+}
+
+void RGBtoLUV(float iR, float iG, float iB, float *oL, float *oU, float *oV)
+{
+	RGBtoXYZ(iR,iG,iB, oL,oU,oV);
+	XYZtoLUV((*oL),(*oU),(*oV), oL,oU,oV);
 }

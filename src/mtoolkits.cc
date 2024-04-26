@@ -4367,6 +4367,7 @@ void vcopy( V3DF dst, cv::Vec3f &src )
 	dst[2] = src[2];
 }
 
+
 void vcopy( cv::Vec3f &dst, V3DF src )
 {
 	dst[0] = src[0];

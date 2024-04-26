@@ -1,13 +1,13 @@
 #include "image_processing.h"
 
 
-void apply_FBL_filter(
+void apply_FBL_filter( 
     V3DF** src_cim, 
 	FlowPath** src_fpath,
     V3DF** cimFBL,
     int w, int h,
-    float sigma_e, float gamma_e, float sigma_g, float gamma_g,	int iteration,
-    int threshold_T
+    float sigma_e, float gamma_e, float sigma_g, float gamma_g,	int threshold_T,
+	int iteration
 )
 {	// Flow-Based Bilateral Filter
 	printf("FBLFilter..");
@@ -122,20 +122,21 @@ void apply_FBL_filter(
 
 	printf("done\n");
 }
-void apply_FBL_filter(
+void apply_FBL_filter( 
     cv::Mat &src_cim, 
 	FlowPath** src_fpath,
-    cv::Mat &dst_cimFBL,
+    cv::Mat &cimFBL,
     int w, int h,
-    float sigma_e, float gamma_e, float sigma_g, float gamma_g,	int iteration,
-    int threshold_T
+    float sigma_e, float gamma_e, 
+	float sigma_g, float gamma_g, 
+	int threshold_T,
+	int iteration
 )
-{	// Flow-Based Bilateral Filter
+{
 	printf("FBLFilter..");
 	int it, i,j, r;
 	float px,py;
 	V3DF clr,dclr;
-
 	int MaskSize=threshold_T;
 	float G_sigma_e, G_sigma_g;
 	float H_gamma_e, H_gamma_g;
@@ -148,8 +149,8 @@ void apply_FBL_filter(
 		InImg[i] = new V3DF[h];
 		OImg[i] = new V3DF[h];
 		for (j=0; j<h; j++){
-			vcopy(InImg[i][j], src_cim.at<cv::Vec3f>(j, i));
-			vcopy(OImg[i][j], src_cim.at<cv::Vec3f>(j, i));
+			vcopy(InImg[i][j], src_cim.at<cv::Vec3f>(j,i));
+			vcopy(OImg[i][j], src_cim.at<cv::Vec3f>(j,i));
 		}
 	}
 	conv_RGBtoLAB(InImg, w, h);
@@ -189,8 +190,6 @@ void apply_FBL_filter(
 
 				vscalar(Ce, 1.0f/normal_term);
 				vcopy(OImg[i][j], Ce);
-
-				printf("Ce: [%.3f, %.3f, %.3f]\n", Ce[0], Ce[1], Ce[2]);
 			}
 		}
 
@@ -235,7 +234,7 @@ void apply_FBL_filter(
 	conv_LABtoRGB(OImg, w, h);
 	for (i=0; i<w; i++)
 		for (j=0; j<h; j++)
-			vcopy(dst_cimFBL.at<cv::Vec3f>(j, i), OImg[i][j]);
+			vcopy(cimFBL.at<cv::Vec3f>(j,i), OImg[i][j]);
 
 	for (i=0; i<w; i++){
 		delete [] InImg[i];
@@ -246,6 +245,449 @@ void apply_FBL_filter(
 
 	printf("done\n");
 }
+cv::Mat apply_FBL_filter(
+	cv::Mat &src_cim, 
+	FlowPath** src_fpath,
+    float sigma_e, float gamma_e, 
+	float sigma_g, float gamma_g,
+	int threshold_T,
+	int iteration
+)
+{
+	int w = src_cim.cols, h = src_cim.rows;
+
+	cv::Mat cimFBL = cv::Mat::zeros(src_cim.size(), CV_32FC3);
+	apply_FBL_filter(
+		src_cim, src_fpath, cimFBL, w, h, 
+		sigma_e, gamma_e, sigma_g, gamma_g, 
+		threshold_T, iteration
+	);
+	return cimFBL;
+}
+
+
+bool IsSameCluster(int sr, int sc, int rr, int rc, int m, int n, int hs, int hr, V3DF **img)
+{
+	int hr2 = hr*hr;
+	int hs2 = hs*hs;
+	int dx, dy;		//공간차이
+	int dL, du, dv;	//색차이
+	dx=sr-m;	dy=sc-n;
+	if (dx*dx + dy*dy <= hs2){
+		dL = img[rr][rc][0] - img[m][n][0];
+		du = img[rr][rc][1] - img[m][n][1];
+		dv = img[rr][rc][2] - img[m][n][2];
+		if (dL*dL + du*du + dv*dv <= hr2){
+			return true;
+		}
+	}
+
+	return false;
+}
+
+int push(short *stackx, short *stacky, short vx, short vy, int *top)
+{
+	if (*top >= 500000) return (-1);		// 숫자가 너무 작으면, 직사각형으로 세그멘테이션 된다.	//[요기]
+	(*top)++;
+	stackx[*top] = vx;
+	stacky[*top] = vy;
+	return (1);
+}
+
+int pop(short *stackx, short *stacky, short *vx, short *vy, int *top)
+{
+	if (*top == 0) return (-1);
+	*vx = stackx[*top];
+	*vy = stacky[*top];
+	(*top)--;
+	return (1);
+}
+
+int m_BlobColoring(V3DF **img, int width, int height, int hs, int hr, int **idx){
+	///1. 라벨링하기
+	int i,j,m,n,top, BlobArea[1000];
+	short r,c, area;
+	int curColor=0;
+
+	//스택으로 사용할 메모리 할당
+	short* stackx=new short [width*height];
+	short* stacky=new short [width*height];
+
+	//라벨링된 픽셀을 저장하기 위해 메모리 할당
+	int *coloring = new int[width*height];
+	for (i = 0; i < width*height; i++)
+		coloring[i]=0;		//메모리 초기화
+
+	for (i = 0; i < width; i++){
+		for (j = 0; j < height; j++){
+			//이미 방문한 점이면 처리 안함
+			if (coloring[i*height+j] != 0)	continue;
+
+			r=i;	//y축 중심위치
+			c=j;	//x축 중심위치
+			top = 0;	area = 1;
+			curColor++;
+
+			while (1){
+GRASSFIRE:
+				for (m = r-1; m <= r+1; m++){
+					for (n = c-1; n <= c+1; n++){
+						//4근방화소
+						//if ( (m==-1 && n==-1) || (m==-1 && n==1) || (m==1 && n==-1) || (m==1 && n==1) )	continue;
+
+						//관심 픽셀이 영상경계를 벗어나면 처리 안함
+						if (m<0 || m>=width || n<0 || n>=height) continue;
+
+						//윈도우 크기 내에 있고, 방문하지 않은 점
+						//2. 클러스터링
+						if ( IsSameCluster(r,c,i,j,m,n, hs, hr, img) && coloring[m*height+n]==0 ){
+							coloring[m*height+n] = curColor;		//현재 라벨로 마크
+							if(push(stackx,stacky,(short)m,(short)n,&top)==-1) continue;
+
+							r=m; 
+							c=n;
+							area++;
+							goto GRASSFIRE;
+						}
+					}
+				}
+				if (pop(stackx,stacky,&r,&c,&top) == -1) break;
+			}
+			if(curColor<1000) BlobArea[curColor] = area;
+		}
+	}
+
+	//coloring --> idx
+	for (i = 0; i < width; i++){
+		for (j = 0; j < height; j++){
+			idx[i][j] = coloring[i*height+j]-1;
+		}
+	}
+
+	delete [] coloring; delete [] stackx; delete [] stacky;
+
+	return curColor;
+}
+
+void InitLabel2(V3DF **img, int w, int h, int n/*regions개수*/, LABEL *label, int **idx){
+	int i,j,r,c;
+	int indx;	//인덱스
+	//라벨 초기화(id, 개수, 대표색, 대표위치)
+	for (i=0; i<n; i++){
+		label[i].num_pixel = 0;		//픽셀개수
+		vector(label[i].clr, 0.0f, 0.0f, 0.0f);	//색
+		vector2(label[i].pos,0,0);	//위치
+	}
+
+	for (i=0; i<w; i++){
+		for (j=0; j<h; j++){
+			indx = idx[i][j];
+			label[indx].num_pixel++;			//픽셀개수
+			vadd(label[indx].clr, img[i][j]);	//색
+			label[indx].pos[X] += i;		label[indx].pos[Y] +=j; //위치
+		}
+	}
+
+	for (i=0; i<n; i++){
+
+		vscalar( label[i].clr, 1.0f/(float)(label[i].num_pixel) );	//평균색
+		label[i].pos[X] = (float)(label[i].pos[X]) / (float)(label[i].num_pixel);
+		label[i].pos[Y] = (float)(label[i].pos[Y]) / (float)(label[i].num_pixel);
+		//vscalar( (V3DF)label[i].pos, 1.0f/(float)(label[i].num_pixel) );	//무게중심
+		//대표위치 정하기: 무게중심에서 
+		//좌->우
+		for (r=0; r<w; r++){
+			if (idx[r][label[i].pos[Y]] == i){
+				vector2(label[i].pos, r,label[i].pos[Y]);
+				break;
+			}
+		}
+		//상->하
+		for (c=0; c<h; c++){
+			if (idx[label[i].pos[X]][c] == i){
+				vector2(label[i].pos, label[i].pos[X],c);
+				break;
+			}
+		}
+	}
+}
+
+int delete_smallRegion3(V3DF **img, int w, int h, int rn/*regions개수*/, LABEL *label, int M, int **idx){
+	//1. 라벨링하기
+	int i,j,m,n,top, BlobArea[2000];
+	short r,c, area;
+	int curColor=0;
+	int orig_n = rn;	// 원래 영역 개수
+	int id, otherid, changedid;
+	V3DF thisclr, diffclr;
+	float diffmin, diff;	//색차
+
+	//스택으로 사용할 메모리 할당
+	short* stackx=new short [w*h];
+	short* stacky=new short [w*h];
+
+	//라벨링된 픽셀을 저장하기 위해 메모리 할당
+	int *coloring = new int[w*h];
+	for (i = 0; i < w*h; i++)
+		coloring[i]=0;		//메모리 초기화
+
+	for (i = 0; i < w; i++){
+		for (j = 0; j < h; j++){
+			// M 이상이면 처리 안함
+			id = idx[i][j];
+			vcopy(thisclr, label[id].clr);
+			diffmin = INFINITY;
+			changedid = -1;
+
+			// 이미 방문한 점이면 처리 안함
+			if (coloring[i*h+j] != 0)	continue;
+
+			r=i;	//y축 중심위치
+			c=j;	//x축 중심위치
+			top = 0;	area = 1;
+			curColor++;
+
+			while (1){
+GRASSFIRE:
+				for (m = r-1; m <= r+1; m++){
+					for (n = c-1; n <= c+1; n++){
+						//4근방화소
+						//if ( (m==-1 && n==-1) || (m==-1 && n==1) || (m==1 && n==-1) || (m==1 && n==1) )	continue;
+
+						//관심 픽셀이 영상경계를 벗어나면 처리 안함
+						if (m<0 || m>=w || n<0 || n>=h) continue;
+
+						// 같은 인덱스이고, 방문하지 않은 점
+						// 클러스터링
+						otherid = idx[m][n];
+
+						//if ( id==2465 )
+						//	printf("hihi\n");
+						//if ( m==228&&n==247 )
+						//	printf("hoho\n");
+
+						if ( id==otherid && coloring[m*h+n]==0 ){
+							coloring[m*h+n] = curColor;		//현재 라벨로 마크
+							if(push(stackx,stacky,(short)m,(short)n,&top)==-1) continue;
+
+							r=m; 
+							c=n;
+							area++;
+							goto GRASSFIRE;
+						}
+						//1. 주위 픽셀 중 Luv 색 차이 최소인 라벨로 검색
+						else if ( id!=otherid && otherid!=changedid ){
+							vsub(diffclr, thisclr, label[otherid].clr);
+							diff = diffclr[0]*diffclr[0] + diffclr[1]*diffclr[1] + diffclr[2]*diffclr[2];
+							if ( diffmin>diff ){
+								diffmin = diff;
+								changedid = otherid;
+							}
+						}
+					}
+				}
+				if (pop(stackx,stacky,&r,&c,&top) == -1) break;
+			}
+
+			if ( label[id].num_pixel < M && changedid>=0){
+				// 2. 최소차이 라벨로 대체
+				for (m=0; m<w; m++){
+					for (n=0; n<h; n++){
+						if ( idx[m][n]==id ){
+							if ( changedid<0 )	continue;
+							idx[m][n] = changedid;
+							label[changedid].num_pixel++;
+						}
+					}
+				}
+				//3. 해당 라벨 id 제거, 개수 0으로
+				label[id].num_pixel = 0;
+				rn--;		//총 라벨 영역 중 M개 픽셀 이하인 영역 제외
+			}
+
+			if(curColor<2000) BlobArea[curColor] = area;
+		}
+	}
+
+	// 빈 곳 정리
+	int *pt = new int[orig_n];	// 빈 곳
+	// 1) 빈 곳 주소 찾기
+	for (i=0,j=0; i<orig_n; i++){
+		if ( label[i].num_pixel==0 )
+			pt[j++] = i; 
+	}
+	// 2) 뒤의 것 --> 앞으로
+	for (i=0,j=0; i<orig_n; i++){
+		if ( label[i].num_pixel==0 || i<rn )	continue;
+
+		// label[j] <-- label[i];
+		for (r=0; r<w; r++){
+			for (c=0; c<h; c++){
+				if (idx[r][c]==i){
+					idx[r][c] = pt[j];
+				}
+			}
+		}
+		//label[pt[j]].num_pixel = label[i].num_pixel;
+		//vassign(label[pt[j]].clr, label[i].clr);
+		//vassign(label[pt[j]].pos, label[i].pos);
+		//j++;
+
+		label[pt[j++]] = label[i];
+		label[i].num_pixel = 0;
+	}
+
+	delete [] pt;
+	delete [] coloring; delete [] stackx; delete [] stacky;
+
+	return rn;
+}
+
+void get_segmentation (
+	cv::Mat &InImg, 
+	int** dst_sgid, cv::Mat &dst_cimSG,
+	int hs, int hr, int M, int w, int h
+)
+{ 
+	printf("Segmentation..");
+
+	int i,j,n;
+	LABEL *label;
+	V3DF **img = new V3DF *[w];
+	int **idx = new int*[w];
+	for (i=0; i<w; i++){
+		img[i] = new V3DF[h];
+		idx[i] = new int[h];
+	}
+
+	// 1. mean-shift filtering
+	//MeanShiftFilter(InImg, w,h, hs, hr, img);
+	init_buf(img, InImg, w,h);
+	conv_RGBtoLUV(img,w,h);
+
+	// 2. labeling
+	n = m_BlobColoring(img, w,h, hs,hr, idx);
+	printf ("%d 개-> ", n);
+
+	// 3. init label
+	label = new LABEL[n];
+	InitLabel2(img, w,h, n, label, idx);
+
+	// 4. M개 이하 픽셀 갖는 클러스터 삭제
+	//n = delete_smallRegion2(img, w, h, n, label, M, idx);
+	n = delete_smallRegion3(img, w, h, n, label, M, idx);
+	InitLabel2(img, w,h, n, label, idx);
+	printf ("%d 개", n);
+
+	// 5. LUV -> RGB
+	for (i=0; i<n; i++){
+		LUVtoRGB(label[i].clr[0],label[i].clr[1],label[i].clr[2],
+			&label[i].clr[0],&label[i].clr[1],&label[i].clr[2]);
+	}
+
+	int id;
+	for (i=0; i<w; i++){
+		for (j=0; j<h; j++){
+			id = idx[i][j];
+			dst_sgid[i][j] = id;
+			vcopy(dst_cimSG.at<cv::Vec3f>(j, i), label[id].clr);
+		}
+	}
+
+	for (i=0; i<w; i++){
+		delete [] img[i];
+		delete [] idx[i];
+	}
+	delete [] img;	delete [] idx;
+	delete [] label;
+
+	printf("done\n");
+	// return n;
+}
+
+
+
+void get_segmentation (
+	V3DF** InImg, 
+	int** dst_sgid, V3DF** dst_cimSG,
+	int hs, int hr, int M, int w, int h
+)
+{ 
+	printf("Segmentation..");
+
+	int i,j,n;
+	LABEL *label;
+	V3DF **img = new V3DF *[w];
+	int **idx = new int*[w];
+	for (i=0; i<w; i++){
+		img[i] = new V3DF[h];
+		idx[i] = new int[h];
+	}
+
+	// 1. mean-shift filtering
+	//MeanShiftFilter(InImg, w,h, hs, hr, img);
+	init_buf(img, InImg, w,h);
+	conv_RGBtoLUV(img,w,h);
+
+	// 2. labeling
+	n = m_BlobColoring(img, w,h, hs,hr, idx);
+	printf ("%d 개-> ", n);
+
+	// 3. init label
+	label = new LABEL[n];
+	InitLabel2(img, w,h, n, label, idx);
+
+	// 4. M개 이하 픽셀 갖는 클러스터 삭제
+	//n = delete_smallRegion2(img, w, h, n, label, M, idx);
+	n = delete_smallRegion3(img, w, h, n, label, M, idx);
+	InitLabel2(img, w,h, n, label, idx);
+	printf ("%d 개", n);
+
+	// 5. LUV -> RGB
+	for (i=0; i<n; i++){
+		LUVtoRGB(label[i].clr[0],label[i].clr[1],label[i].clr[2],
+			&label[i].clr[0],&label[i].clr[1],&label[i].clr[2]);
+	}
+
+	int id;
+	for (i=0; i<w; i++){
+		for (j=0; j<h; j++){
+			id = idx[i][j];
+			dst_sgid[i][j] = id;
+			vcopy(dst_cimSG[i][j], label[id].clr);
+		}
+	}
+
+	for (i=0; i<w; i++){
+		delete [] img[i];
+		delete [] idx[i];
+	}
+	delete [] img;	delete [] idx;
+	delete [] label;
+
+	printf("done\n");
+	// return n;
+}
+
+void sum_FDoG_FBL(
+	cv::Mat &src_imCL, cv::Mat &src_cimSG,
+	cv::Mat &dst_cimsum,
+	int w, int h
+){
+	int i,j;
+
+	for (i=0; i<w; i++){
+		for (j=0; j<h; j++){
+			if (src_imCL.at<float>(j, i) == 0.0f) {
+				vzero(dst_cimsum.at<cv::Vec3f>(j, i));
+			} else {
+				// vcopy(cimsum[i][j], cimSG[i][j]);
+				dst_cimsum.at<cv::Vec3f>(j, i) = src_cimSG.at<cv::Vec3f>(j, i);
+			}
+		}
+	}
+}
+
 
 void get_gradient(
 	float** src_gray_im, 
@@ -390,6 +832,21 @@ void get_gradient(
 	delete	[] imG;
 	delete	[] src_gray_img_arr;
 }
+void get_gradient(const cv::Mat& src, cv::Mat& dst, float grad_thr) {
+    dst.create(src.size(), CV_32FC3); // make sure it's the correct type
+    GradientOperator op(src, dst, grad_thr);
+    cv::parallel_for_(cv::Range(0, src.rows), op);
+}
+cv::Mat get_gradient(
+	cv::Mat &src_gray_img,
+	float grad_thr
+)
+{
+	int w = src_gray_img.cols, h = src_gray_img.rows;
+	cv::Mat grad = cv::Mat::zeros(h, w, CV_32FC3);
+	get_gradient(src_gray_img, grad, w, h, grad_thr);
+	return grad;
+}
 
 void get_tangent(
 	V3DF** src_grad, 
@@ -432,6 +889,15 @@ void get_tangent(
 			vcross(dst_tangent_pixel, gradient, axis_z);
 		}
 	}
+}
+cv::Mat get_tangent(
+	cv::Mat &src_grad
+)
+{
+	int w = src_grad.cols, h = src_grad.rows;
+	cv::Mat tangent = cv::Mat::zeros(h, w, CV_32FC3);
+	get_tangent(src_grad, tangent, w, h);
+	return tangent;
 }
 
 void get_ETF(
@@ -582,6 +1048,23 @@ void get_ETF(
 	float finish = clock();	
 	printf("Took %.2f seconds.\n", ((finish-start)/CLOCKS_PER_SEC ));
 }
+cv::Mat get_ETF(
+	cv::Mat &src_grad, cv::Mat &src_tangent,
+	int nbhd, int iteration
+)
+{
+	if (src_grad.cols != src_tangent.cols || src_grad.rows != src_tangent.rows) {
+		printf("src_grad and src_tangent must have same shape. (width and height)\n");
+		exit(1);
+	}
+
+	int w = src_grad.cols, h = src_tangent.rows;
+	cv::Mat etf = src_tangent.clone();
+	for(int i=0; i<iteration; ++i) {
+		get_ETF(src_grad, etf, nbhd, w, h);
+	}
+	return etf;
+}
 
 void get_flow_path(
 	V3DF** src_etf, 
@@ -626,8 +1109,6 @@ void get_flow_path(
 			cl_set_flow_at_point_T(src_grad, &(dst_fpath[i][j]), i, j, w, h, threshold_T);
 		}
 	}
-
-	printf("fpath[0][0].sn = %3d, fpath[0][0].sn = %3d\n", dst_fpath[0][0].sn, dst_fpath[0][0].tn);
 
 	float finish = clock();	//�����ð�����
 	printf("Took %.2f seconds.\n", ((finish-start)/CLOCKS_PER_SEC ));
@@ -952,7 +1433,22 @@ void get_coherent_line(
 
 	printf("done\n");
 }
+cv::Mat get_coherent_line(
+	cv::Mat &src_gray_im, cv::Mat &src_etf, FlowPath** src_fpath,
+ 	float threshold_T, float CL_tanh_he_thr,
+	float sigmaC, float sigmaM, float P, int iterations
+)
+{
+	if (src_gray_im.rows != src_etf.rows || src_gray_im.cols != src_etf.cols) {
+		printf("src_gray and src_etf must have shape shape (width & height)\n");
+		exit(1);
+	}
+	int w = src_gray_im.cols, h = src_gray_im.rows;
+	cv::Mat imCL = cv::Mat::zeros(h, w, CV_32F);
+	get_coherent_line(src_gray_im, src_etf, src_fpath, imCL, w, h, threshold_T, CL_tanh_he_thr, sigmaC, sigmaM, P, iterations);
 
+	return imCL;
+}
 
 void cl_set_flow_at_point_S(
 	V3DF** src_etf, FlowPath* dst_fpath,
@@ -1370,386 +1866,3 @@ void V3DF_interpolate(
 
 	vnorm(dst);
 }
-
-// void get_vector_path(
-// 	V3DF** src_etf, float** src_imCL, 
-// 	FlowPath** dst_vpath, 
-// 	int w, int h, int threshold_S
-// ) {
-// 	int i,j,k;
-// 	if ( !dst_vpath ){
-// 		dst_vpath = new FlowPath *[w];
-// 		for (i=0; i<w; i++)
-// 			dst_vpath[i] = new FlowPath[h];
-// 	}
-// 	else{
-// 		for (i=0; i<w; i++)
-// 			for (j=0; j<h; j++)
-// 				dst_vpath[i][j].Init();
-// 	}
-
-// 	int n;
-// 	FlowPath tmp;
-// 	int N = 1000;
-// 	tmp.Alpha = new V3DF[N+1];
-// 	for (i=0; i<w; i++){
-// 		for (j=0; j<h; j++){
-// 			// 1. �ɷ�����(not coherent line OR zero etf)
-// 			if ( src_imCL[i][j]!=0.0f || is_zero_vector(src_etf[i][j]) ){
-// 				dst_vpath[i][j].sn = 0;		dst_vpath[i][j].tn = 0;
-// 				continue;
-// 			}
-
-// 			tmp.InitShallow();
-
-// 			// 2. �ӽ����� ������ ���� �ֱ� & ���� ���� (S ����)
-// 			tmp.sn = N;
-// 			vpath_set_flow_at_point_S(src_etf, src_imCL, &(tmp), i, j, w, h, threshold_S);
-
-// 			// SetFlowAtPointS4Vectorization(i,j, &(tmp.sn), tmp.Alpha);	// flow �����ٰ� coherent line�� �ƴϸ� �����
-
-// 			// 3. �޸� �Ҵ� �� ���� (S ����)
-// 			n = dst_vpath[i][j].sn = tmp.sn;
-// 			if ( n!=0 ){
-// 				if ( dst_vpath[i][j].Alpha )	delete [] dst_vpath[i][j].Alpha;
-// 				dst_vpath[i][j].Alpha = new V3DF[n];
-// 				for (k=0; k<n; k++)
-// 					vcopy(dst_vpath[i][j].Alpha[k], tmp.Alpha[k]);
-// 			}
-// 		}
-// 	}
-// }
-
-// void vpath_set_flow_at_point_S(
-// 	V3DF** src_etf, float** src_imCL,
-// 	FlowPath* dst_vpath,
-// 	int px, int py, int w, int h, int threshold_S
-// ) {
-// 	// flow �����ٰ� coherent line�� �ƴϸ� �����
-// 	float x,y, x_,y_;	//ù��, ����
-// 	V3DF etf_/*,etf__/*��etf*/;
-// 	int nN, nP, i;
-// 	int init_n = dst_vpath->sn;
-// 	V3DF **alpha = new V3DF*[2];
-// 	for (i=0; i<2; i++)
-// 		alpha[i] = new V3DF[init_n];
-
-// 	nP=nN=0;
-// 	x=px;	y=py;
-
-// 	float angle;
-// 	int threshold_Angle = 15.0f;
-// 	int threshold_Angle2 = 135.0f;
-// 	V3DF etf__;	vcopy(etf__, src_etf[px][py]);
-
-// 	float sqrt2 = sqrt(2.0f);	//sqrt(2)��ŭ ����.
-// 	//-S
-// 	int limitation = 0;
-// 	while ( nN<init_n/2 ){
-// 		if (limitation++ > 100) break;
-
-// 		if ( x<0||x>=w||y<0||y>=h )	break;	//image ��
-
-// 		//1. �ش� ������ etf
-// 		V3DF_interpolate(src_etf, etf_, x, y, w, h);
-// 		//2. normalize
-// 		vnorm(etf_);
-// 		if ( is_zero_vector(etf_) )	break;
-
-// 		angle = angle_r(etf_,etf__)*180.0f/PI;
-// 		if ( angle > threshold_Angle2 ){
-// 			vnegate(etf_);
-// 		}
-// 		if ( angle > threshold_Angle )	//������ etf�� �̷�� ���� �Ӱ�ġ �̻��̸�
-// 			break;
-
-// 		x_ = x-etf_[0];
-// 		y_ = y-etf_[1];
-// 		if ( x_<0 || x_>=w || y_<0 || y_>=h || src_imCL[(int)x_][(int)y_]!=0.0f )	break;				// coherent line �� �ƴϸ� stop
-// 		if ( ((int) x != (int) x_) || ((int) y != (int) y_) )	// �ʹ� �����ϰ� ���� �ʱ� ����
-// 			vector( alpha[NEGATIVE][nN++], x_, y_, 0.0f );
-// 		x=x_;	y=y_;
-
-// 		vcopy(etf__,etf_);
-// 	}
-
-// 	//+S
-// 	x=px;	y=py;
-// 	vcopy(etf__, src_etf[px][py]);
-// 	limitation = 0;
-// 	while ( nP<init_n/2 ){
-// 		if (limitation++ > 100) break;
-
-// 		if ( x<0||x>=w||y<0||y>=h )	break;	//image ��
-
-// 		//1. �ش� ������ etf
-// 		V3DF_interpolate(src_etf, etf_, x, y, w, h);
-// 		//2. normalize
-// 		vnorm(etf_);
-// 		if ( is_zero_vector(etf_) )	break;
-
-// 		angle = angle_r(etf_,etf__)*180.0f/PI;
-// 		if ( angle > threshold_Angle2 ){
-// 			vnegate(etf_);
-// 		}
-// 		if ( angle > threshold_Angle )	//������ etf�� �̷�� ���� �Ӱ�ġ �̻��̸�
-// 			break;
-
-// 		x_ = x+etf_[0];
-// 		y_ = y+etf_[1];
-// 		if ( x_<0 || x_>=w || y_<0 || y_>=h || src_imCL[(int)x_][(int)y_]!=0.0f )	break;				// coherent line �� �ƴϸ� stop
-// 		if ( ((int) x != (int) x_) || ((int) y != (int) y_) )
-// 			vector( alpha[POSITIVE][nP++], x_, y_, 0.0f );
-// 		x=x_;	y=y_;
-
-// 		vcopy(etf__,etf_);
-// 	}
-// 	dst_vpath->sn = nN+nP+1;
-// 	if ( dst_vpath->sn < 10 ){
-// 		dst_vpath->sn = 0;
-// 		for (i=0; i<2; i++)		delete [] alpha[i];	delete [] alpha;
-// 		return;
-// 	}
-
-// 	//���� alpha(2D) -> Alpha(1D)(-S ~ +S)
-// 	for (i=0; i<init_n; i++)	vzero( dst_vpath->Alpha[i] );	//0. �ʱ�ȭ
-// 	for (i=0; i<nN; i++)	
-// 		vcopy( dst_vpath->Alpha[i], alpha[NEGATIVE][nN-1-i] );	//1. negative ��
-// 	vector(dst_vpath->Alpha[i], px,py,0.0f);	//2. �߽ɰ�
-// 	int n=nN+1;	//���ݱ��� ���ǵ� Alpha ����
-// 	for (i=0; i<nP; i++)	
-// 		vcopy( dst_vpath->Alpha[n+i], alpha[POSITIVE][i] );	//3. positive ��
-
-// 	for (i=0; i<2; i++)		delete [] alpha[i];	delete [] alpha;
-// }
-
-// void vectorize_vector_path(
-// 	FlowPath** src_vpath,
-// 	int** dst_skltn,
-// 	int w, int h
-// ) {
-// 	int i,j;
-// 	if ( !dst_skltn ){
-// 		dst_skltn = new int *[w];
-// 		for (i=0; i<w; i++){
-// 			dst_skltn[i] = new int[h];
-// 			for (j=0; j<h; j++)
-// 				dst_skltn[i][j] = 0;
-// 		}
-// 	}
-// 	else{
-// 		for (i=0; i<w; i++)
-// 			for (j=0; j<h; j++)
-// 				dst_skltn[i][j] = 0;
-// 	}
-
-// 	_vectorize_build_skltn(src_vpath, dst_skltn, w, h);			//	��� pixel���� skeleton�� ��� -->	0: outside
-// 	//										1: border
-// 	//										2: border���� �� �ȼ� ��������
-// 	//										3: border���� �� �ȼ� ��������
-// 	_vectorize_compute_center_line(src_vpath, dst_skltn, w, h);	//	Streams[i][j]���� stream ���
-// 	//	stream�� ���� pixel�� index (i, j)�� slist�� ����
-// 	// if ( !dparam.StreamsExisting ){	// Stream�� �������� ������
-// 	// 	return;
-// 	// }
-// 	build_center_line1();	//	stream�� �߿��� max stream ���
-// 	//	max stream�� plist�� ����
-// 	build_center_line2();	//	�̿��� stream�� ã�Ƽ� ������
-// 	//	�̿��� stream�� ������ stream���� qlist�� ����
-
-// 	sort_length();			//	qlist�� stream���� ���̼����� ����
-// 	//	���̼����� ������ stream���� rlist�� ����
-// 	curv_line ( );			//	compute the curvatures at each point
-
-// 	SetAlphaMax();	// [����߰�] vectorlized line(vpath) �̵���Ű�� ���� Alpha -> AlphaMax
-// 	// [��� �߰�] importance ���
-
-// 	if ( dparam.is_shifted_line_selection ){
-// 		// 1. ���� ���� AlphaMax -> Alpha
-// 		SwapAlphaNAlphaMax();
-
-// 		// 2. ��ȣ��: sort_length(), curv_line()
-// 		sort_length();	curv_line ( );	// �׳� �ҷ��� �ɱ�?
-// 	}
-// }
-
-// void _vectorize_build_skltn(
-// 	FlowPath** src_vpath,
-// 	int** dst_skltn,
-// 	int w, int h
-// ) {
-// 	int i, j, k, l, px,py;
-
-// 	//	1. �ʱ�ȭ: Streams�� �������� pixel�� 1, �׷��� ���� pixel�� 0���� setting
-// 	for ( i = 0; i < w; i++ )  {
-// 		for ( j = 0; j < h; j++ ) {
-// 			if ( src_vpath[i][j].sn==0 )	continue;
-
-// 			vector(src_vpath[i][j].BBox[0], 10000.0f,  10000.0f,  10000.0f);
-// 			vector(src_vpath[i][j].BBox[1], -10000.0f,  -10000.0f,  -10000.0f);
-// 			for ( k = 0; k < src_vpath[i][j].sn; k++ ) {
-// 				px = (int) src_vpath[i][j].Alpha[k][0];	if (px<0) px = 0;	else if (px>=w) px = w-1;
-// 				py = (int) src_vpath[i][j].Alpha[k][1];	if (py<0) py = 0;	else if (py>=h) py = h-1;
-// 				dst_skltn[px][py] = 1;
-// 				if ( src_vpath[i][j].BBox[0][0] > px )	src_vpath[i][j].BBox[0][0] = px;
-// 				if ( src_vpath[i][j].BBox[0][1] > py )	src_vpath[i][j].BBox[0][1] = py;
-
-// 				if ( src_vpath[i][j].BBox[1][0] < px )	src_vpath[i][j].BBox[1][0] = px;
-// 				if ( src_vpath[i][j].BBox[1][1] < py )	src_vpath[i][j].BBox[1][1] = py;
-// 			}
-// 		}
-// 	}
-
-// 	int cnt, scnt;
-// 	int flag = 1;
-// 	int limitation = 0;
-// 	do {
-// 		for ( i = 1, cnt = 0; i < w-1; i++ ) {
-// 			for ( j = 1; j < h-1; j++ ) {
-// 				if ( dst_skltn[i][j] != flag )
-// 					continue;
-// 				for ( k = i-1, scnt = 0; k <= i+1; k++ ) {
-// 					for ( l = j-1; l <= j+1; l++ ) {
-// 						scnt += (dst_skltn[k][l] >= flag);
-// 					}
-// 				}
-// 				if ( scnt == 9 ) {
-// 					dst_skltn[i][j] = flag+1;
-// 					cnt++;
-// 				}
-// 			}
-// 		}
-// 		flag++;
-
-// 		if (limitation++ > 100) break;
-// 	} while ( cnt > 0 );
-
-// 	printf("Maximum skeleton: %d\n", flag);
-
-// 	for ( i = 0; i < w; i++ ) {
-// 		for ( j = 0; j < h; j++ ) {
-// 			src_vpath[i][j].skltn = 0.0f;
-// 			if ( src_vpath[i][j].sn == 0 )
-// 				continue;
-
-// 			for ( k = 0; k < src_vpath[i][j].sn; k++ ) {
-// 				px = (int) src_vpath[i][j].Alpha[k][0];	if (px<0) px = 0;	else if (px>=w) px = w-1;
-// 				py = (int) src_vpath[i][j].Alpha[k][1];	if (py<0) py = 0;	else if (py>=h) py = h-1;
-// 				src_vpath[i][j].skltn += dst_skltn[px][py];
-// 			}
-// 			src_vpath[i][j].skltn /= src_vpath[i][j].sn;
-// 		}
-// 	}
-// }
-
-// void _vectorize_compute_center_line(
-// 	FlowPath** src_vpath,
-// 	int* dst_ns_list, int* dst_slist, 
-// 	int w, int h
-// ) {
-// 	int i, j;
-// 	float max_cl;
-// 	int cl_cnt;
-
-// 	for ( i = 0, max_cl = 0.0f, cl_cnt = 0; i < w; i++ ) {
-// 		for ( j = 0; j < h; j++ ) {
-// 			if ( src_vpath[i][j].sn == 0 )
-// 				continue;
-
-// 			//	1. estimate center_line
-// 			compute_center_line ( i, j );
-// 			cl_cnt++;
-// 			if ( src_vpath[i][j].cl > max_cl )
-// 				max_cl = src_vpath[i][j].cl;
-// 		}
-// 	}
-// 	dst_slist = cl_cnt;
-
-// 	if ( dst_slist )	delete [] dst_slist;
-// 	dst_slist = new V3DI[dst_ns_list];
-// 	for ( i = 0, cl_cnt = 0; i < w; i++ ) {
-// 		for ( j = 0; j < h; j++ ) {
-// 			if ( src_vpath[i][j].cl > 0 ) {
-// 				slist[cl_cnt][0] = i;
-// 				slist[cl_cnt][1] = j;
-// 				slist[cl_cnt++][2] = (int) (vpath[i][j].cl * 10000.0f);
-// 			}
-// 		}
-// 	}
-
-// 	if ( n_slist==0 ){	// There is no Stream
-// 		nVpath = n_qlist = n_plist = n_slist;
-// 		dparam.StreamsExisting = false;
-// 		return;
-// 	}
-
-// 	qs ( 0, n_slist-1, slist );
-// }
-
-// void __vectorize_compute_center_line_at_point(
-// 	int** src_skltn,
-// 	FlowPath** dst_vpath,
-// 	int px, int py, int w, int h
-// ) {
-// 	int i, j,r,c;
-// 	V3DF vec;
-// 	V3DF nvec;
-// 	V3DF Zaxis;
-// 	float tcl;
-// 	V3DF tpt1, tpt2;
-// 	V3DF weights = { 0.5f, 0.3f, 0.2f };
-
-// 	vector ( Zaxis, 0.0f, 0.0f, 1.0f );
-// 	dst_vpath[px][py].cl = 0;
-// 	for ( i = 0; i < dst_vpath[px][py].sn; i++ ) {
-// 		if ( i == 0 ) {
-// 			nvector ( vec, dst_vpath[px][py].Alpha[i+1], dst_vpath[px][py].Alpha[i] );
-// 		}
-// 		else if ( i == dst_vpath[px][py].sn - 1 ) {
-// 			nvector ( vec, dst_vpath[px][py].Alpha[i], dst_vpath[px][py].Alpha[i-1] );
-// 		}
-// 		else {
-// 			nvector ( vec, dst_vpath[px][py].Alpha[i+1], dst_vpath[px][py].Alpha[i-1] );
-// 		}
-
-// 		nvcross ( nvec, vec, Zaxis );
-
-// 		r = (int) dst_vpath[px][py].Alpha[i][0];	if (r<0) r = 0;	else if (r>=w) r = w-1;
-// 		c = (int) dst_vpath[px][py].Alpha[i][1];	if (c<0) c = 0;	else if (c>=h) c = h-1;
-// 		tcl = src_skltn[r][c];
-
-// 		vcopy( tpt1, dst_vpath[px][py].Alpha[i] );
-// 		for ( j = 0; j < 3; j++ ) {
-// 			get_point ( tpt2, tpt1, 1.0f, nvec );
-// 			if ( tpt2[0] < 0.0f )
-// 				tpt2[0] = 0.0f;
-// 			if ( tpt2[1] < 0.0f )
-// 				tpt2[1] = 0.0f;
-// 			if ( tpt2[0] > w-1 )
-// 				tpt2[0] = w-1;
-// 			if ( tpt2[1] > h-1 )
-// 				tpt2[1] = h-1;
-// 			tcl += weights[j] * src_skltn[(int) tpt2[0]][(int) tpt2[1]];
-// 			vcopy( tpt1, tpt2 );
-// 		}
-
-// 		vnegate ( nvec );
-// 		vcopy( tpt1, dst_vpath[px][py].Alpha[i] );
-// 		for ( j = 0; j < 3; j++ ) {
-// 			get_point ( tpt2, tpt1, 1.0f, nvec );
-// 			if ( tpt2[0] < 0.0f )
-// 				tpt2[0] = 0.0f;
-// 			if ( tpt2[1] < 0.0f )
-// 				tpt2[1] = 0.0f;
-// 			if ( tpt2[0] > w-1 )
-// 				tpt2[0] = w-1;
-// 			if ( tpt2[1] > h-1 )
-// 				tpt2[1] = h-1;
-// 			tcl += weights[j] * src_skltn[(int) tpt2[0]][(int) tpt2[1]];
-// 			vcopy( tpt1, tpt2 );
-// 		}
-
-// 		dst_vpath[px][py].cl += tcl;
-// 	}
-// }
-

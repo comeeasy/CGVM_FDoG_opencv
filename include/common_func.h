@@ -3,15 +3,11 @@
 #ifndef __COMMON_FUNC_H__
 #define __COMMON_FUNC_H__
 
-
 #include "mtoolkits.h"
-#include "vectors_.h"
-
-
-typedef float V3DF[3];
 
 
 void init_buf( V3DF **OutImg, V3DF **InImg, int width, int height);
+void init_buf( V3DF **OutImg, cv::Mat InImg, int width, int height);
 
 void GetValAtPoint_V3DF(V3DF **ival, int w, int h, float px, float py, V3DF oval);
 void GetValAtPoint(float **ival, int w, int h, float px, float py, float *oval);

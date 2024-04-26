@@ -5,10 +5,20 @@ typedef float V3DF[3];
 
 void init_buf( V3DF **OutImg, V3DF **InImg, int width, int height) {
 	int i,j;
-	//OutImg �ʱ�ȭ
+	//OutImg 초기화
 	for (i = 0; i < width; i++){
 		for (j = 0; j < height; j++){
 			vcopy(OutImg[i][j], InImg[i][j]);
+		}
+	}
+}
+
+void init_buf( V3DF **OutImg, cv::Mat InImg, int width, int height) {
+	int i,j;
+	//OutImg 초기화
+	for (i = 0; i < width; i++){
+		for (j = 0; j < height; j++){
+			vcopy(OutImg[i][j], InImg.at<cv::Vec3f>(j, i));
 		}
 	}
 }
@@ -48,7 +58,7 @@ void GetValAtPoint_V3DF(V3DF **ival, int w, int h, float px, float py, V3DF oval
 	vscale(t1,uly-py);	vscale(t2,py-lry);
 	vadd(oval,t1,t2);
 
-	vnorm(oval);
+	// vnorm(oval);
 	//return vlength(resETF);
 }
 
