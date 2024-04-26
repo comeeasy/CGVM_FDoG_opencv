@@ -41,13 +41,31 @@ void apply_FBL_filter(
 	int threshold_T,
 	int iteration
 );
+void apply_FBL_filter_parellel( 
+    cv::Mat &src_cim, 
+	FlowPath** src_fpath,
+    cv::Mat &cimFBL,
+    int w, int h,
+    float sigma_e, float gamma_e, 
+	float sigma_g, float gamma_g, 
+	int threshold_T,
+	int iteration, size_t num_workers
+);
 cv::Mat apply_FBL_filter(
 	cv::Mat &src_cim, 
 	FlowPath** src_fpath,
-    float sigma_e=2.0f, float gamma_e=50.0f, 
-	float sigma_g=10.0f, float gamma_g=10.0f,
-	int threshold_T=11,
-	int iteration=3
+    float sigma_e, float gamma_e, 
+	float sigma_g, float gamma_g,
+	int threshold_T,
+	int iteration
+);
+cv::Mat apply_FBL_filter(
+	cv::Mat &src_cim, 
+	FlowPath** src_fpath,
+    float sigma_e, float gamma_e, 
+	float sigma_g, float gamma_g,
+	int threshold_T,
+	int iteration, size_t num_workers
 );
 
 void get_segmentation (

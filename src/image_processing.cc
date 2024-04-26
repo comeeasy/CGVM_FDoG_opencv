@@ -246,6 +246,169 @@ void apply_FBL_filter(
 
 	printf("done\n");
 }
+void __process_Ce_FBL(int start, int end, V3DF** InImg, V3DF** OImg, FlowPath** src_fpath, int w, int h, float sigma_e, float gamma_e) {
+	int it, i, j, r;
+	float s, div_g, div_g2;
+	float cdist, div_s, div_s2;	// color distance
+	float normal_term;
+	float G_sigma_e, H_gamma_e;
+	float px, py;
+	V3DF Ce, clr, dclr;
+	
+	// 1. Ce : linear bilateral filter along the edge(or ETF)
+	div_g	= sqrt(2*PI)*sigma_e;	div_g2	= 2*sigma_e*sigma_e;
+	div_s	= sqrt(2*PI)*gamma_e;	div_s2	= 2*gamma_e*gamma_e;
+	for (i=start; i<end; i++){
+		for (j=0; j<h; j++){
+			normal_term = 0.0f;	vzero(Ce);
+			for (r=0; r<src_fpath[i][j].sn; r++){
+				px = src_fpath[i][j].Alpha[r][0];	py = src_fpath[i][j].Alpha[r][1];
+				//if ( px<0||px>=MAX_X || py<0||py>=MAX_Y)	continue;
+				// 1) color
+				GetValAtPoint_V3DF(InImg, w, h, px,py, clr);
+
+				// 2) spatial
+				s =	sqrt((i-px)*(i-px) + (j-py)*(j-py));	// (i,j)~(px,py)
+				G_sigma_e = ( exp(-(s*s)/div_g2) / div_g );
+
+				// 3) color
+				vsub(dclr, InImg[i][j], clr);	// clr(i,j) ~ clr(px,py)
+				cdist = vlength(dclr);
+				H_gamma_e = ( exp(-(cdist*cdist)/div_s2) / div_s );
+
+				// 4) 최종
+				vscalar(clr, G_sigma_e * H_gamma_e);
+				vadd(Ce, clr);
+				normal_term += (G_sigma_e * H_gamma_e);
+			}
+			if ( normal_term==0.0f )	continue;
+
+			vscalar(Ce, 1.0f/normal_term);
+			vcopy(OImg[i][j], Ce);
+		}
+	}
+}
+void __process_Cg_FBL(int start, int end, int w, int h, V3DF** InImg, V3DF** OImg, FlowPath** src_fpath, float sigma_g, float gamma_g) {
+	int it, i, j, r;
+	float s, div_g, div_g2;
+	float cdist, div_s, div_s2;	// color distance
+	float normal_term;
+	float G_sigma_g, H_gamma_g;
+	float px, py;
+	V3DF Cg, clr, dclr;
+
+	// 2. Cg : linear bilateral filter along the gradient direction
+	div_g	= sqrt(2*PI)*sigma_g;	div_g2	= 2*sigma_g*sigma_g;
+	div_s	= sqrt(2*PI)*gamma_g;	div_s2	= 2*gamma_g*gamma_g;
+	for (i=start; i<end; i++){
+		for (j=0; j<h; j++){
+			normal_term = 0.0f;	vzero(Cg);
+			for (r=0; r<src_fpath[i][j].tn; r++){
+				px = src_fpath[i][j].Beta[r][0];	py = src_fpath[i][j].Beta[r][1];
+				//if ( px<0||px>=MAX_X || py<0||py>=MAX_Y)	continue;
+				// 1) color
+				GetValAtPoint_V3DF(InImg, w,h, px,py, clr);
+
+				// 2) spatial
+				s =	sqrt((i-px)*(i-px) + (j-py)*(j-py));	// (i,j)~(px,py)
+				G_sigma_g = ( exp(-(s*s)/div_g2) / div_g );
+
+				// 3) color
+				vsub(dclr, InImg[i][j], clr);	// clr(i,j) ~ clr(px,py)
+				cdist = vlength(dclr);
+				H_gamma_g = ( exp(-(cdist*cdist)/div_s2) / div_s );
+
+				// 4) 최종
+				vscalar(clr, G_sigma_g * H_gamma_g);
+				vadd(Cg, clr);
+				normal_term += (G_sigma_g *H_gamma_g);
+			}
+			if ( normal_term==0.0f )	continue;
+
+			vscalar(Cg, 1.0f/normal_term);
+			vcopy(OImg[i][j], Cg);
+		}
+	}
+}
+void apply_FBL_filter_parellel( 
+    cv::Mat &src_cim, 
+	FlowPath** src_fpath,
+    cv::Mat &cimFBL,
+    int w, int h,
+    float sigma_e, float gamma_e, 
+	float sigma_g, float gamma_g, 
+	int threshold_T,
+	int iteration, size_t num_workers
+)
+{
+	printf("FBLFilter..");
+	int it, i,j, r;
+	float px,py;
+	V3DF clr,dclr;
+	int MaskSize=threshold_T;
+	float G_sigma_e, G_sigma_g;
+	float H_gamma_e, H_gamma_g;
+	V3DF Ce, Cg;
+	float normal_term;
+
+	V3DF **InImg = new V3DF *[w];
+	V3DF **OImg = new V3DF *[w];
+	for (i=0; i<w; i++){
+		InImg[i] = new V3DF[h];
+		OImg[i] = new V3DF[h];
+		for (j=0; j<h; j++){
+			vcopy(InImg[i][j], src_cim.at<cv::Vec3f>(j,i));
+			vcopy(OImg[i][j], src_cim.at<cv::Vec3f>(j,i));
+		}
+	}
+	conv_RGBtoLAB(InImg, w, h);
+	conv_RGBtoLAB(OImg, w, h);
+
+	std::vector<std::thread> threads(num_workers);
+    int slice = w / num_workers;
+
+	for (it=0; it<iteration; it++){
+		std::cout << ".." << it+1;
+
+		for (int t = 0; t < num_workers; t++) {
+			int start = t * slice;
+			int end = (t == num_workers - 1) ? w : (t + 1) * slice;
+			threads[t] = std::thread(__process_Ce_FBL, start, end, InImg, OImg, src_fpath, w, h, sigma_e, gamma_e);
+		}
+
+		for (auto &thread : threads) {
+			thread.join();
+		}
+
+		init_buf(InImg, OImg, w, h);
+
+		for (int t = 0; t < num_workers; t++) {
+			int start = t * slice;
+			int end = (t == num_workers - 1) ? w : (t + 1) * slice;
+			threads[t] = std::thread(__process_Cg_FBL, start, end, w, h, InImg, OImg, src_fpath, sigma_g, gamma_g);
+		}
+
+		for (auto &thread : threads) {
+			thread.join();
+		}
+
+		init_buf(InImg, OImg, w, h);
+	}
+
+	conv_LABtoRGB(OImg, w, h);
+	for (i=0; i<w; i++)
+		for (j=0; j<h; j++)
+			vcopy(cimFBL.at<cv::Vec3f>(j,i), OImg[i][j]);
+
+	for (i=0; i<w; i++){
+		delete [] InImg[i];
+		delete [] OImg[i];
+	}
+	delete [] InImg;
+	delete [] OImg;
+
+	printf("done\n");
+}
 cv::Mat apply_FBL_filter(
 	cv::Mat &src_cim, 
 	FlowPath** src_fpath,
@@ -256,12 +419,29 @@ cv::Mat apply_FBL_filter(
 )
 {
 	int w = src_cim.cols, h = src_cim.rows;
-
 	cv::Mat cimFBL = cv::Mat::zeros(src_cim.size(), CV_32FC3);
 	apply_FBL_filter(
 		src_cim, src_fpath, cimFBL, w, h, 
 		sigma_e, gamma_e, sigma_g, gamma_g, 
 		threshold_T, iteration
+	);
+	return cimFBL;
+}
+cv::Mat apply_FBL_filter(
+	cv::Mat &src_cim, 
+	FlowPath** src_fpath,
+    float sigma_e, float gamma_e, 
+	float sigma_g, float gamma_g,
+	int threshold_T,
+	int iteration, size_t num_workers
+)
+{
+	int w = src_cim.cols, h = src_cim.rows;
+	cv::Mat cimFBL = cv::Mat::zeros(src_cim.size(), CV_32FC3);
+	apply_FBL_filter_parellel(
+		src_cim, src_fpath, cimFBL, w, h, 
+		sigma_e, gamma_e, sigma_g, gamma_g, 
+		threshold_T, iteration, num_workers
 	);
 	return cimFBL;
 }
@@ -843,6 +1023,7 @@ cv::Mat get_gradient(
 	float grad_thr
 )
 {
+	
 	int w = src_gray_img.cols, h = src_gray_img.rows;
 	cv::Mat grad = cv::Mat::zeros(h, w, CV_32FC3);
 	get_gradient(src_gray_img, grad, w, h, grad_thr);
@@ -1277,6 +1458,8 @@ void __get_flow_path_partial(int start, int end, int h, int threshold_S, int thr
     V3DF zerov = {0.0f, 0.0f, 0.0f};
     V3DF tmp = {0.0f, 0.0f, 0.0f};
 
+	std::vector<std::thread> threads(2);
+
     for (int i = start; i < end; i++) {
         for (int j = 0; j < h; j++) {
             cv::Vec3f &src_etf_pixel = src_etf.at<cv::Vec3f>(j, i);
@@ -1606,42 +1789,86 @@ void get_coherent_line(
 
 	printf("done\n");
 }
-void __get_coherent_line_partial(int start, int end, int h, float** oldim, FlowPath** src_fpath, float *DogMask, float sigmaM, float threshold_T, float CL_tanh_he_thr, cv::Mat &dst_imCL) {
-    const float div = sqrt(2 * M_PI) * sigmaM;
-    const float div2 = 2 * sigmaM * sigmaM;
+void __get_clhg_CL(int start, int end, int w, int h, float** oldim, float** clhg, cv::Mat &src_etf, FlowPath** src_fpath, float *DogMask, float threshold_T) {
+	float px,py,intensity;
+	float Hg = 0.0f;
+	int k=0;
 
     for (int i = start; i < end; i++) {
         for (int j = 0; j < h; j++) {
-            float Hg = 0.0f, He = 0.0f;
+            clhg[i][j] = 0.0f;
+			Hg = 0.0f;
 
-            // Calculate Hg
-            for (int k = 0; k < std::min((int)threshold_T, src_fpath[i][j].tn); k++) {
-                float px = src_fpath[i][j].Beta[k][0];
-                float py = src_fpath[i][j].Beta[k][1];
-                if (px < 0 || px >= end || py < 0 || py >= h) continue;
-                float intensity;
-                GetValAtPoint(oldim, end, h, px, py, &intensity);
-                Hg += (intensity * DogMask[k]);
-            }
+			if ( is_zero_vector(src_etf.at<cv::Vec3f>(j, i)) ){
+				continue;
+			}
 
-            // Calculate He
-            for (int k = 0; k < src_fpath[i][j].sn; k++) {
-                float px = src_fpath[i][j].Alpha[k][0];
-                float py = src_fpath[i][j].Alpha[k][1];
-                if (px < 0 || px >= end || py < 0 || py >= h) continue;
-                float dist = sqrt((i - px) * (i - px) + (j - py) * (j - py));
-                He += (exp(-(dist * dist) / div2) / div) * Hg;
-            }
+			// 1. Hg
+			if ( src_fpath[i][j].tn < threshold_T ){
+				for (k=0; k<src_fpath[i][j].tn; k++){
+					px = src_fpath[i][j].Beta[k][0];	py = src_fpath[i][j].Beta[k][1];
+					if ( px<0||px>=w || py<0||py>=h)	continue;
+					GetValAtPoint(oldim, w, h, px,py, &intensity);
+					Hg += (intensity*DogMask[k]);
+				}
+			}
+			else{
+				for (k=0; k<threshold_T; k++){
+					px = src_fpath[i][j].Beta[k][0];	py = src_fpath[i][j].Beta[k][1];
+					if ( px<0||px>=w || py<0||py>=h)	continue;
+					GetValAtPoint(oldim, w, h, px,py, &intensity);
+					Hg += (intensity*DogMask[k]);
+				}
+			}
 
-            // Set line
-            if (He < 0 && 1.0f + tanh(He) < CL_tanh_he_thr)
-                dst_imCL.at<float>(j, i) = 0.0f;
-            else
-                dst_imCL.at<float>(j, i) = 1.0f;
+			clhg[i][j] = Hg;
+        }
+    }
+}
+void __get_clhe_CL(int start, int end, int w, int h, float** clhg, float** clhe, cv::Mat &src_etf, FlowPath** src_fpath, float sigmaM, float CL_tanh_he_thr, cv::Mat &dst_imCL) {
+    float s, He, Hg, px, py;
+	const float div = sqrt(2 * M_PI) * sigmaM;
+    const float div2 = 2 * sigmaM * sigmaM;
+	int k;
 
-            // Update old image
-            if (dst_imCL.at<float>(j, i) == 0.0f)
-                oldim[i][j] = 0.0f;
+    for (int i = start; i < end; i++) {
+        for (int j = 0; j < h; j++) {
+            clhe[i][j] = 0.0f;
+			He = 0.0;
+
+			// S passing (Obama image 51.01 sec -> 12.89 sec)
+			if ( is_zero_vector(src_etf.at<cv::Vec3f>(j, i)) ){
+				dst_imCL.at<float>(j, i) = 1.0f;
+				continue;
+			}
+
+			// 2. He
+			//|		He(x) = (-S~+S) G(s) Hg(cx(s)) ds
+			//|	��� T�� ���� ���xDog filter
+			He = 0.0f;
+
+			for (k=0; k<src_fpath[i][j].sn; k++){
+				px = src_fpath[i][j].Alpha[k][0];	py = src_fpath[i][j].Alpha[k][1];
+				if ( px<0||px>=w || py<0||py>=h)	continue;
+				GetValAtPoint(clhg, w, h, px,py, &Hg);
+
+				//He += (GaussianMask[k]*Hg);
+				s =	sqrt((i-px)*(i-px) + (j-py)*(j-py));	// (i,j)~(px,py)
+				He += ( ( exp(-(s*s)/div2) / div )*Hg );
+			}
+
+			// 3. set line(0 or 1)
+			if ( He < 0 && 1.0f+tanh(He) < CL_tanh_he_thr )	// 0.997f or 1.0f
+				//if ( 1.0f+tanh(He)<srcCL_tanh_he_thr )	// 0.997f or 1.0f
+				dst_imCL.at<float>(j, i) = 0.0f;
+			else
+				dst_imCL.at<float>(j, i) = 1.0f;
+
+			// 4. set old im -> line����(�ݺ�����)
+			// if (dst_imCL.at<float>(j, i)==0.0f)
+			// 	oldim[i][j] = 0.0f;
+
+			clhe[i][j] = He;
         }
     }
 }
@@ -1672,19 +1899,47 @@ void get_coherent_line(
     ScalarBuf(Ms, P, MaskSize);
     DifferenceBuf(DogMask, Mc, Ms, MaskSize);
 
-    std::vector<std::thread> threads(num_workers);
+    std::vector<std::thread> threads1(num_workers);
+	std::vector<std::thread> threads2(num_workers);
+
     int slice = w / num_workers;
 
+	float **clhg = new float*[w];
+	float **clhe = new float*[w];
+	for (int i=0; i<w; i++){
+		clhg[i] = new float[h];
+		clhe[i] = new float[h];
+	}
+
     for (int iter = 0; iter < iterations; ++iter) {
+		// Get CLHg
         for (int t = 0; t < num_workers; t++) {
             int start = t * slice;
             int end = (t == num_workers - 1) ? w : (t + 1) * slice;
-            threads[t] = std::thread(__get_coherent_line_partial, start, end, h, oldim, src_fpath, DogMask, sigmaM, threshold_T, CL_tanh_he_thr, std::ref(dst_imCL));
+			
+            threads1[t] = std::thread(__get_clhg_CL, start, end, w, h, oldim, clhg, std::ref(src_etf), src_fpath, DogMask, threshold_T);
         }
-
-        for (auto &thread : threads) {
+        for (auto &thread : threads1) {
             thread.join();
         }
+
+		// Get clhe and imCL
+        for (int t = 0; t < num_workers; t++) {
+            int start = t * slice;
+            int end = (t == num_workers - 1) ? w : (t + 1) * slice;
+
+            threads2[t] = std::thread(__get_clhe_CL, start, end, w, h, clhg, clhe, std::ref(src_etf), src_fpath, sigmaM, CL_tanh_he_thr, std::ref(dst_imCL));
+        }
+		for (auto &thread : threads2) {
+            thread.join();
+        }
+
+		for(int i=0; i<w; ++i) {
+			for(int j=0; j<h; ++j) {
+				if (dst_imCL.at<float>(j, i) == 0.0f)
+					oldim[i][j] = 0.0f;
+			}
+		}
     }
 
     delete [] Mc;
@@ -1692,8 +1947,12 @@ void get_coherent_line(
     delete [] DogMask;
     for (int i = 0; i < w; i++) {
         delete [] oldim[i];
+		delete [] clhg[i];
+		delete [] clhe[i];
     }
     delete [] oldim;
+	delete [] clhg;
+	delete [] clhe;
 
     printf("done\n");
 }
@@ -1838,7 +2097,7 @@ void cl_set_flow_at_point_S(
 	for (i=0; i<my_n; i++)		delete [] alpha[i];	delete [] alpha;
 }
 void cl_set_flow_at_point_S(
-	cv::Mat &src_etf, FlowPath* dst_fpath,
+	cv::Mat &src_etf, FlowPath *dst_fpath,
 	int px, int py, int w, int h, int threshold_S /*, int* nPoints, V3DF *Alpha*/
 )
 {
