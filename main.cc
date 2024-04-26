@@ -186,6 +186,13 @@ int main(int argc, char** argv ) {
 	final_path = output_dir.string() + "/" + base_name + "_etf.png";
 	cv::imwrite(final_path, etf * 255);
 	std::cout << final_path << " is saved." << std::endl;
+	final_path = output_dir.string() + "/" + base_name + "_origin.png";
+	cv::imwrite(final_path, image * 255);
+	std::cout << final_path << " is saved." << std::endl;
+	final_path = output_dir.string() + "/" + base_name + "_infodraw.png";
+	cv::imwrite(final_path, infodraw_img * 255);
+	std::cout << final_path << " is saved." << std::endl;
+
 
     // cv::waitKey(0);
 
