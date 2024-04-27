@@ -54,8 +54,11 @@ public:
 
 		skltn = cl = length = nlength = 0.0f;
 		tcurv = 0;
-		if (curv)	delete[] curv;	curv = NULL;
-		if (crange)	delete[] crange;	crange = NULL;
+		if (curv) {
+			delete[] curv;
+		}		
+		curv = NULL;
+		if (crange)	{delete[] crange;}	crange = NULL;
 		selected_segment = 0;
 	}
 	void InitShallow(){

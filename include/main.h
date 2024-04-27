@@ -12,5 +12,6 @@
 #include "image_processing.h"
 #include "image_processing_accelerater.h"
 #include "Label.h"
+#include "utils.h"
 
 #endif

@@ -13,9 +13,8 @@ int main(int argc, char** argv ) {
 	std::string infodraw_img_path(argv[2]);
 
 	// Set Direction parameters 
-    int CL_is_rgb_or_lab = 1;
-    int CL_itration = 1;
-    float CL_l_weight = 0.9f;
+    // int CL_is_rgb_or_lab = 1;
+    // float CL_l_weight = 0.9f;
     float CL_sigma_c_line_width = 1.0f;
     float CL_sigma_m_line_coherence = 5.0f;
     float CL_tanh_he_thr = 0.998f;
@@ -107,7 +106,7 @@ int main(int argc, char** argv ) {
 	float FBL_gamma_e = 50.0f;
 	float FBL_sigma_g = 2.0f;
 	float FBL_gamma_g = 10.0f;
-	int FBL_threshold_T = threshold_T;
+	int FBL_threshold_T = 3;
 	int FBL_iteration = 5;
 	cv::Mat cimFBL = apply_FBL_filter(infodraw_img, fpath, FBL_sigma_e, FBL_gamma_e, FBL_sigma_g, FBL_gamma_g, FBL_threshold_T, FBL_iteration, num_workers);
 	// cv::Mat cimFBL = apply_FBL_filter(infodraw_img, fpath, FBL_sigma_e, FBL_gamma_e, FBL_sigma_g, FBL_gamma_g, FBL_threshold_T, FBL_iteration);
@@ -125,42 +124,43 @@ int main(int argc, char** argv ) {
 
 	//== draw images==
 	// origin image
-	cv::namedWindow("Original image", cv::WINDOW_NORMAL );
-    cv::imshow("Original image", image);
+	// cv::namedWindow("Original image", cv::WINDOW_NORMAL );
+	// cv::cvtColor(image, image, cv::COLOR_RGB2BGR);
+    // cv::imshow("Original image", image);
 
-	// gray image
-	cv::namedWindow("Gray image", cv::WINDOW_GUI_NORMAL);
-    cv::imshow("Gray image", img_gray);
+	// // gray image
+	// cv::namedWindow("Gray image", cv::WINDOW_GUI_NORMAL);
+    // cv::imshow("Gray image", img_gray);
 
-	// gradient
-	cv::namedWindow("Gradient Image", cv::WINDOW_NORMAL );
-	cv::normalize(grad, grad, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32FC3);
-	cv::imshow("Gradient Image", grad);
+	// // gradient
+	// cv::namedWindow("Gradient Image", cv::WINDOW_NORMAL );
+	// cv::normalize(grad, grad, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32FC3);
+	// cv::imshow("Gradient Image", grad);
 
-	// tangent 
-	cv::namedWindow("Tangent Image", cv::WINDOW_NORMAL );
-	cv::normalize(tangent, tangent, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32FC3);
-	cv::imshow("Tangent Image", tangent); 
+	// // tangent 
+	// cv::namedWindow("Tangent Image", cv::WINDOW_NORMAL );
+	// cv::normalize(tangent, tangent, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32FC3);
+	// cv::imshow("Tangent Image", tangent); 
 
-	// ETF
-	cv::namedWindow("ETF Image", cv::WINDOW_NORMAL );
-	cv::normalize(etf, etf, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32FC3);
-	cv::imshow("ETF Image", etf); 
+	// // ETF
+	// cv::namedWindow("ETF Image", cv::WINDOW_NORMAL );
+	// cv::normalize(etf, etf, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32FC3);
+	// cv::imshow("ETF Image", etf); 
 
-	// CL
-	cv::namedWindow("CL Image", cv::WINDOW_NORMAL );
-	cv::normalize(imCL, imCL, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32F);
-	cv::imshow("CL Image", imCL); 
+	// // CL
+	// cv::namedWindow("CL Image", cv::WINDOW_NORMAL );
+	// cv::normalize(imCL, imCL, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32F);
+	// cv::imshow("CL Image", imCL); 
 
-	// infodraw
-	cv::namedWindow("InfoDraw Image", cv::WINDOW_NORMAL );
-	cv::normalize(infodraw_img, infodraw_img, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32F);
-	cv::imshow("InfoDraw Image", infodraw_img); 
+	// // infodraw
+	// cv::namedWindow("InfoDraw Image", cv::WINDOW_NORMAL );
+	// cv::normalize(infodraw_img, infodraw_img, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32F);
+	// cv::imshow("InfoDraw Image", infodraw_img); 
 
-	// FBL
-	cv::namedWindow("FBL Image", cv::WINDOW_NORMAL );
-	cv::normalize(cimFBL, cimFBL, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32F);
-	cv::imshow("FBL Image", cimFBL);
+	// // FBL
+	// cv::namedWindow("FBL Image", cv::WINDOW_NORMAL );
+	// cv::normalize(cimFBL, cimFBL, 0.0f, 1.0f, cv::NORM_MINMAX, CV_32F);
+	// cv::imshow("FBL Image", cimFBL);
 
 	// image save
 	std::filesystem::path input_file_path(input_img_path);
@@ -193,8 +193,18 @@ int main(int argc, char** argv ) {
 	cv::imwrite(final_path, infodraw_img * 255);
 	std::cout << final_path << " is saved." << std::endl;
 
+	// Interactive
+	
 
-    // cv::waitKey(0);
+	cv::Mat imgs[7];
+	imgs[utils::ORIGIN] = image;
+	imgs[utils::INFODRAW] = infodraw_img;
+	imgs[utils::GRAD] = grad;
+	imgs[utils::TANGENT] = tangent;
+	imgs[utils::ETF] = etf;
+	imgs[utils::CL] = imCL;
+	imgs[utils::FBL] = cimFBL;
+	utils::interactive_monitor(imgs, fpath);
 
 	for(int i=0; i<w; ++i) {
 		delete [] fpath[i];
