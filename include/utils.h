@@ -3,32 +3,23 @@
 #ifndef __UTILS_H__
 #define __UTILS_H__
 
-#include <iostream>
 #include <string>
+#include <filesystem>
 #include <opencv2/opencv.hpp>
 
 #include "FlowPath.h"
 
-namespace utils {
 
-enum IMG_IDX {ORIGIN, INFODRAW, GRAD, TANGENT, ETF, CL, FBL};
+namespace utils
+{
+    void save_fpath_to_npy(std::string output_dir, std::string input_img_path, cv::Mat &img, FlowPath** fpath, int w, int h, int threshold_S);
 
-cv::Mat     g_monitor_image;
-cv::Mat*    g_images_for_monitor;
-FlowPath**  g_fpath; 
-cv::Point   g_ptOld;
-cv::Point   g_ptNew;
-int         g_toggleFill = 1;
-int         g_image_idx = 0;
+    cv::Mat read_RGB_normalized_image(std::string path);
+    cv::Mat read_Gray_normalized_image(std::string path);
 
-void draw_RGB_image(cv::Mat RGB_image, std::string title);
+    void save_image(std::string output_dir, std::string input_img_path, cv::Mat norm_img, std::string postfix);
 
-void interactive_monitor(cv::Mat* imgs, FlowPath** fpath);
-void on_mouse(int event, int x, int y, int flags, void*);
-
-void draw_fpath(int x, int y);
-}
-
+} // namespace utils
 
 
 #endif

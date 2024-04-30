@@ -3,7 +3,12 @@
 #ifndef __FLOWPATH_H__
 #define __FLOWPATH_H__
 
+#include <string>
+#include <opencv2/opencv.hpp>
+
 #include "mtoolkits.h"
+#include "npy.hpp"
+
 
 
 class FlowPath{

@@ -1458,8 +1458,6 @@ void __get_flow_path_partial(int start, int end, int h, int threshold_S, int thr
     V3DF zerov = {0.0f, 0.0f, 0.0f};
     V3DF tmp = {0.0f, 0.0f, 0.0f};
 
-	std::vector<std::thread> threads(2);
-
     for (int i = start; i < end; i++) {
         for (int j = 0; j < h; j++) {
             cv::Vec3f &src_etf_pixel = src_etf.at<cv::Vec3f>(j, i);

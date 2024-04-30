@@ -1,103 +1,91 @@
 #include "utils.h"
 
 
-void draw_RGB_image(cv::Mat RGB_image, std::string title) {
-    cv::namedWindow(title, cv::WINDOW_NORMAL );
-	cv::cvtColor(RGB_image, RGB_image, cv::COLOR_RGB2BGR);
-    cv::imshow(title, RGB_image);
+
+void utils::save_fpath_to_npy(std::string output_dir, std::string input_img_path, cv::Mat &img, FlowPath** fpath, int w, int h, int threshold_S) {
+
+    float px_old, py_old, px_cur, py_cur;
+
+    std::vector<float> data;
+    for(int x=0; x<w; ++x) {
+        for(int y=0; y<h; ++y) {
+            // Threshold_S is defined out of this space.
+            // Please be careful to use.
+            int sn = fpath[x][y].sn;
+            for(int r=0; r<threshold_S; ++r) {
+                if (r < sn) { // insert fpath pixel values if there is fpath 
+                    px_cur = fpath[x][y].Alpha[r][0];	py_cur = fpath[x][y].Alpha[r][1];
+                
+                    cv::Vec3f &pixel = img.at<cv::Vec3f>(y, x);
+                    for(int c=0; c<3; ++c) { // 3 for RGB
+                        data.push_back(pixel[c]);                    
+                    }
+                } else { // if fpath is shorter than threshold_S, then fill it with 0s.
+                    for(int c=0; c<3; ++c) { // 3 for RGB
+                        data.push_back(0.0f);                    
+                    }
+                }
+            }
+        }
+    }
+
+    npy::npy_data_ptr<float> d;
+	d.data_ptr = data.data();
+	d.shape = { (unsigned long)w, (unsigned long)h, (unsigned long)threshold_S, 3 };
+	d.fortran_order = false; // optional
+
+    std::filesystem::path input_file_path(input_img_path);
+	std::filesystem::path base_output_path(output_dir);
+	std::string base_name = input_file_path.stem().string();
+
+	std::filesystem::path final_output_dir = base_output_path / base_name;
+	std::filesystem::create_directories(final_output_dir);
+
+    std::string final_path;
+	final_path = final_output_dir.string() + "/" + base_name + "_fpath_of_infodraw.npy";
+	npy::write_npy(final_path, d);
 }
 
-void utils::draw_fpath(int x, int y) {
-	float px_old, py_old, px_cur, py_cur;
-	int pixel_size = 10;
+cv::Mat utils::read_RGB_normalized_image(std::string path) {
+    cv::Mat image = cv::imread( path, cv::IMREAD_COLOR );
+    if ( !image.data )
+    {
+        printf("No image data \n");
+        exit(1);
+    }
+	cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
+	image.convertTo(image, CV_32FC3);
+	cv::normalize(image, image, 0.0f, 1.0f, cv::NORM_MINMAX);
 
-	px_old = x, py_old = y;
-
-	for(int r=0; r<utils::g_fpath[x][y].sn; ++r) {
-		px_cur = utils::g_fpath[x][y].Alpha[r][0];	py_cur = utils::g_fpath[x][y].Alpha[r][1];
-		cv::rectangle(utils::g_monitor_image, cv::Point(pixel_size*r, 0), cv::Point(pixel_size*(r+1), pixel_size), utils::g_images_for_monitor[utils::g_image_idx].at<cv::Vec3f>(py_old, px_old), -1);
-		cv::line(utils::g_monitor_image, cv::Point(px_old, py_old), cv::Point(px_cur, py_cur), cv::Scalar(0, 0, 255), 1);
-		cv::imshow("img", utils::g_monitor_image);
-		px_old = px_cur; py_old = py_cur;
-	}
+    return image;
 }
 
-void utils::on_mouse(int event, int x, int y, int flags, void*) {
-	// 디버깅을 위해 매개변수로 들어온 flags 출력
-	switch (event) {
-    // 좌클릭이 되는 순간 ptOld에 좌표 저장
-	case cv::EVENT_LBUTTONDOWN:
-		switch (utils::g_image_idx) {
-			case utils::FBL:
-			case utils::INFODRAW:
-				draw_fpath(x, y);
-				break;
-			default:
-				utils::g_ptOld = cv::Point(x, y);
-		}
-		
-	case cv::EVENT_LBUTTONUP:
-		//cout << "EVENT_LBUTTONDOWN: " << x << ", " << y << endl;
-		if (utils::g_ptNew.x != 0 && utils::g_ptNew.y != 0) {
-			cv::rectangle(utils::g_monitor_image, utils::g_ptOld, utils::g_ptNew, cv::Scalar(255, 0, 0), utils::g_toggleFill);
-			cv::imshow("img", utils::g_monitor_image);
-			utils::g_ptNew = cv::Point(0, 0);
-		}
-		break;
-	default:
-		break;
-	}	
+cv::Mat utils::read_Gray_normalized_image(std::string path) {
+    cv::Mat img_gray = cv::imread( path, cv::IMREAD_GRAYSCALE );
+    if ( !img_gray.data )
+    {
+        printf("No image data \n");
+        exit(1);
+    }
+	img_gray.convertTo(img_gray, CV_32F);
+	cv::normalize(img_gray, img_gray, 0.0f, 1.0f, cv::NORM_MINMAX);
+
+    return img_gray;
 }
 
-void set_image(cv::Mat img) {
-	utils::g_monitor_image = img.clone();
-	cv::imshow("img", utils::g_monitor_image);
-}
+void utils::save_image(std::string output_dir, std::string input_img_path, cv::Mat norm_img, std::string postfix) {
+    // pixel values of image must have range 0 to 1 
+    // normalized image must be passed
+    // condition check logic must be added later.
 
-void utils::interactive_monitor(cv::Mat* imgs, FlowPath** fpath) {
-	utils::g_images_for_monitor = imgs;
-	utils::g_fpath = fpath;
-	
-	cv::namedWindow("img", cv::WINDOW_NORMAL);
+    std::filesystem::path input_file_path(input_img_path);
+	std::filesystem::path base_output_path(output_dir);
+	std::string base_name = input_file_path.stem().string();
 
-	set_image(imgs[0]);
+	std::filesystem::path final_output_dir = base_output_path / base_name;
+	std::filesystem::create_directories(final_output_dir);
 
-	// 마우스 콜백 함수를 등록하는 함수
-	//void setMouseCallback(const String & winname, MouseCallback onMouse, void* userdata = 0);
-	//winname : 이벤트 처리를 할 창의 이름, onMouse : 마우스콜백 함수 이름, userdata : 콜백함수에 전달한 데이터의 포인터로 전달할 값이 없으면 비움
-	cv::setMouseCallback("img", utils::on_mouse);
-	cv::imshow("img", utils::g_monitor_image);
-
-	while (true) {
-		int keycode = cv::waitKey();
-
-		switch (keycode) {
-			// 숫자 입력시 이미지 변환
-			case '1': utils::g_image_idx = utils::ORIGIN;
-				      set_image(imgs[utils::g_image_idx]); 	 break;
-			case '2': utils::g_image_idx = utils::INFODRAW;
-					  set_image(imgs[utils::g_image_idx]); 	 break;
-			case '3': utils::g_image_idx = utils::GRAD;
-					  set_image(imgs[utils::g_image_idx]); 	 break;
-			case '4': utils::g_image_idx = utils::TANGENT;
-					  set_image(imgs[utils::g_image_idx]); 	 break;
-			case '5': utils::g_image_idx = utils::ETF;
-					  set_image(imgs[utils::g_image_idx]); 	 break;
-			case '6': utils::g_image_idx = utils::CL;
-					  set_image(imgs[utils::g_image_idx]); 	 break;
-			case '7': utils::g_image_idx = utils::FBL;
-					  set_image(imgs[utils::g_image_idx]); 	 break;
-
-			case 'c':
-			case 'C':
-				utils::g_monitor_image = imgs[utils::g_image_idx].clone();
-				cv::imshow("img", utils::g_monitor_image);
-				break;
-
-			case 'q':
-			case 'Q':
-			case 27:
-				return;
-		}
-	}
+	std::string final_path;
+	final_path = final_output_dir.string() + "/" + base_name + postfix + ".png";
+	cv::imwrite(final_path, norm_img * 255);
 }
