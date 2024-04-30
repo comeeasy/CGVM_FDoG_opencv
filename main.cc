@@ -101,7 +101,7 @@ int main(int argc, char** argv ) {
 	imgs[gui::ETF] = etf;
 	imgs[gui::CL] = imCL;
 	imgs[gui::FBL] = cimFBL;
-	gui::interactive_monitor(imgs, fpath);
+	// gui::interactive_monitor(imgs, fpath);
 
 	// free fpath memory
 	for(int i=0; i<w; ++i) {

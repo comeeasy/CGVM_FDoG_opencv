@@ -3,6 +3,7 @@
 #ifndef __UTILS_H__
 #define __UTILS_H__
 
+#include <cstdlib>
 #include <string>
 #include <filesystem>
 #include <opencv2/opencv.hpp>

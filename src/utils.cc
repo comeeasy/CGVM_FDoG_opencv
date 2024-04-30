@@ -38,7 +38,7 @@ void utils::save_fpath_to_npy(std::string output_dir, std::string input_img_path
 	std::filesystem::path base_output_path(output_dir);
 	std::string base_name = input_file_path.stem().string();
 
-	std::filesystem::path final_output_dir = base_output_path / base_name;
+	std::filesystem::path final_output_dir = base_output_path / "fpath_npzs";
 	std::filesystem::create_directories(final_output_dir);
 
     std::string final_path;
