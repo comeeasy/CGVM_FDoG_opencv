@@ -47,6 +47,7 @@ int main(int argc, char** argv ) {
 	cv::Mat image = utils::read_RGB_normalized_image(input_img_path);
 	cv::Mat img_gray = utils::read_Gray_normalized_image(input_img_path);
 	cv::Mat infodraw_img = utils::read_RGB_normalized_image(infodraw_img_path);
+	cv::Mat infodraw_img_gray = utils::read_Gray_normalized_image(infodraw_img_path);
 	if (image.cols != infodraw_img.cols || image.rows != infodraw_img.rows) {
 		printf("Size of image and infodraw image must be same.\n");
 		exit(1);
@@ -90,7 +91,7 @@ int main(int argc, char** argv ) {
 	utils::save_image(output_dir, input_img_path, infodraw_img, "_infodraw");
 
 	// save infodraw's pixel values through fpath from origin image
-	utils::save_fpath_to_npy(output_dir, input_img_path, infodraw_img, fpath, w, h, FPath_threshold_S);
+	utils::save_Graypixel_of_fpath_to_npy(output_dir, input_img_path, infodraw_img_gray, fpath, w, h, FPath_threshold_S);
 
 	// Interactive
 	cv::Mat imgs[7];

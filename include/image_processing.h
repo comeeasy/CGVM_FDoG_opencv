@@ -14,8 +14,6 @@
 #include "FlowPath.h"
 #include "Label.h"
 
-#include "image_processing_accelerater.h"
-
 #define NEGATIVE 0
 #define POSITIVE 1
 

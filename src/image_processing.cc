@@ -1013,11 +1013,7 @@ void get_gradient(
 	delete	[] imG;
 	delete	[] src_gray_img_arr;
 }
-void get_gradient(const cv::Mat& src, cv::Mat& dst, float grad_thr) {
-    dst.create(src.size(), CV_32FC3); // make sure it's the correct type
-    GradientOperator op(src, dst, grad_thr);
-    cv::parallel_for_(cv::Range(0, src.rows), op);
-}
+
 cv::Mat get_gradient(
 	cv::Mat &src_gray_img,
 	float grad_thr
