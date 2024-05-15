@@ -362,6 +362,10 @@ void vector_rotate ( V3DF tvec, V3DF svec, V3DF src, V3DF dst );
 void mzero3 ( Matrix3DF m );
 void mzero4 ( Matrix4DF m );
 
+void V3DF_interpolate(V3DF** src, V3DF dst, float px, float py, int w, int h);
+void V3DF_interpolate(cv::Mat &src, V3DF dst, float px, float py, int w, int h);
+float float_interpolate(cv::Mat &src, float px, float py, int w, int h);
+
 void get_point_from_barycentric ( V3DF pt, V3DF bary, V3DF p1, V3DF p2, V3DF p3 );
 void get_normals ( V3DF *TrNmls, int nTrs, int nTrPts, V3DI *Trs, V3DF *TrPts );
 int is_a_projected_point_on_a_directed_triangle ( V3DF bary, V3DF pt, V3DF p1, V3DF p2, V3DF p3 );

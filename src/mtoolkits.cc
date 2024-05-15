@@ -4374,3 +4374,107 @@ void vcopy( cv::Vec3f &dst, V3DF src )
 	dst[1] = src[1];
 	dst[2] = src[2];
 }
+
+void V3DF_interpolate(
+	V3DF** src, V3DF dst, 
+	float px, float py, int w, int h
+) {
+	int ulx,uly,lrx,lry;		//	upper-left (x, y), lower-right (x, y)
+	V3DF etfA,etfB,etfC,etfD;	//	etf at A,B,C,D
+	V3DF e1,e2,t1,t2;
+
+	if (px+1>=w || py+1>=h){
+		vector(dst, 0.0f,0.0f,0.0f);
+		return;
+	}
+
+	ulx = (int)(px);
+	uly = (int)(py+1);
+	lrx = (int)(px+1);
+	lry = (int)(py);
+	vcopy(etfA, src[ulx][lry]);
+	vcopy(etfB, src[lrx][lry]);
+	vcopy(etfC, src[ulx][uly]);
+	vcopy(etfD, src[lrx][uly]);
+
+	//distA: A~(px,py) �Ÿ�
+	//eA: etf at A
+	//1. distB*etfA + distA*etfB
+	vcopy(t1,etfA);	vcopy(t2,etfB);
+	vscale(t1,lrx-px);	vscale(t2,px-ulx);
+	vadd(e1,t1,t2);
+	//2. distD*etfC + distC*etfD
+	vcopy(t1,etfC);	vcopy(t2,etfD);
+	vscale(t1,lrx-px);	vscale(t2,px-ulx);
+	vadd(e2,t1,t2);
+	//3. distC*1 + distA*2
+	vcopy(t1,e1);		vcopy(t2,e2);
+	vscale(t1,uly-py);	vscale(t2,py-lry);
+	vadd(dst,t1,t2);
+
+	vnorm(dst);
+}
+void V3DF_interpolate(
+	cv::Mat &src, V3DF dst, 
+	float px, float py, int w, int h
+) {
+	int ulx,uly,lrx,lry;		//	upper-left (x, y), lower-right (x, y)
+	V3DF etfA,etfB,etfC,etfD;	//	etf at A,B,C,D
+	V3DF e1,e2,t1,t2;
+
+	if (px+1>=w || py+1>=h){
+		vector(dst, 0.0f,0.0f,0.0f);
+		return;
+	}
+
+	ulx = (int)(px);
+	uly = (int)(py+1);
+	lrx = (int)(px+1);
+	lry = (int)(py);
+	// vcopy(etfA, src[ulx][lry]);
+	vcopy(etfA, src.at<cv::Vec3f>(lry, ulx));
+	// vcopy(etfB, src[lrx][lry]);
+	vcopy(etfB, src.at<cv::Vec3f>(lry, lrx));
+	// vcopy(etfC, src[ulx][uly]);
+	vcopy(etfC, src.at<cv::Vec3f>(uly, ulx));
+	// vcopy(etfD, src[lrx][uly]);
+	vcopy(etfD, src.at<cv::Vec3f>(uly, lrx));
+
+	//distA: A~(px,py) �Ÿ�
+	//eA: etf at A
+	//1. distB*etfA + distA*etfB
+	vcopy(t1,etfA);	vcopy(t2,etfB);
+	vscale(t1,lrx-px);	vscale(t2,px-ulx);
+	vadd(e1,t1,t2);
+	//2. distD*etfC + distC*etfD
+	vcopy(t1,etfC);	vcopy(t2,etfD);
+	vscale(t1,lrx-px);	vscale(t2,px-ulx);
+	vadd(e2,t1,t2);
+	//3. distC*1 + distA*2
+	vcopy(t1,e1);		vcopy(t2,e2);
+	vscale(t1,uly-py);	vscale(t2,py-lry);
+	vadd(dst,t1,t2);
+
+	vnorm(dst);
+}
+
+float float_interpolate(cv::Mat &src, float px, float py, int w, int h) {
+	int ulx,uly,lrx,lry;		//	upper-left (x, y), lower-right (x, y)
+	float v1,v2,v3,v4;	//	etf at A,B,C,D
+
+	if (px+1>=w || py+1>=h){
+		return 0.0f;
+	}
+
+	ulx = (int)(px);
+	uly = (int)(py+1);
+	lrx = (int)(px+1);
+	lry = (int)(py);
+
+	v1 = src.at<float>(lry, ulx);
+	v2 = src.at<float>(lry, lrx);
+	v3 = src.at<float>(uly, ulx);
+	v4 = src.at<float>(uly, lrx);
+
+	return ((uly-py) * (((lrx-px) * v1) + ((px-ulx) * v2))) + ((py-lry) * (((lrx-px) * v3) + ((px-ulx) * v4)));
+}
