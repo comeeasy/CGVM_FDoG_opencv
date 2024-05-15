@@ -95,8 +95,8 @@ void cl_set_flow_at_point_S(cv::Mat &src_etf, FlowPath* dst_fpath, int px, int p
 void cl_set_flow_at_point_T(V3DF** src_grad, FlowPath* dst_fpath, int px, int py, int w, int h, int threshold_T);
 void cl_set_flow_at_point_T(cv::Mat &src_grad, FlowPath* dst_fpath, int px, int py, int w, int h, int threshold_T);
 
-void V3DF_interpolate(V3DF** src, V3DF dst, float px, float py, int w, int h);
-void V3DF_interpolate(cv::Mat &src, V3DF dst, float px, float py, int w, int h);
+// void V3DF_interpolate(V3DF** src, V3DF dst, float px, float py, int w, int h);
+// void V3DF_interpolate(cv::Mat &src, V3DF dst, float px, float py, int w, int h);
 
 // Flow-Based Bilateral Filter
 //=====================================

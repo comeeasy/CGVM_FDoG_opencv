@@ -82,26 +82,27 @@ int main(int argc, char** argv ) {
 	// ======================================
 
 	// save images to output_dir
-	utils::save_image(output_dir, input_img_path, imCL, "_imCL");
-	utils::save_image(output_dir, input_img_path, cimFBL, "_FBL");
-	utils::save_image(output_dir, input_img_path, grad, "_grad");
-	utils::save_image(output_dir, input_img_path, tangent, "_tangent");
-	utils::save_image(output_dir, input_img_path, etf, "_ETF");
-	utils::save_image(output_dir, input_img_path, image, "_input");
-	utils::save_image(output_dir, input_img_path, infodraw_img, "_infodraw");
+	// utils::save_image(output_dir, input_img_path, imCL, "_imCL");
+	// utils::save_image(output_dir, input_img_path, cimFBL, "_FBL");
+	// utils::save_image(output_dir, input_img_path, grad, "_grad");
+	// utils::save_image(output_dir, input_img_path, tangent, "_tangent");
+	// utils::save_image(output_dir, input_img_path, etf, "_ETF");
+	// utils::save_image(output_dir, input_img_path, image, "_input");
+	// utils::save_image(output_dir, input_img_path, infodraw_img, "_infodraw");
 
-	// save infodraw's pixel values through fpath from origin image
+	// // save infodraw's pixel values through fpath from origin image
 	utils::save_Graypixel_of_fpath_to_npy(output_dir, input_img_path, infodraw_img_gray, fpath, w, h, FPath_threshold_S);
+	utils::save_fpath(output_dir, input_img_path, fpath, w, h, FPath_threshold_S);
 
 	// Interactive
-	cv::Mat imgs[7];
-	imgs[gui::ORIGIN] = image;
-	imgs[gui::INFODRAW] = infodraw_img;
-	imgs[gui::GRAD] = grad;
-	imgs[gui::TANGENT] = tangent;
-	imgs[gui::ETF] = etf;
-	imgs[gui::CL] = imCL;
-	imgs[gui::FBL] = cimFBL;
+	// cv::Mat imgs[7];
+	// imgs[gui::ORIGIN] = image;
+	// imgs[gui::INFODRAW] = infodraw_img;
+	// imgs[gui::GRAD] = grad;
+	// imgs[gui::TANGENT] = tangent;
+	// imgs[gui::ETF] = etf;
+	// imgs[gui::CL] = imCL;
+	// imgs[gui::FBL] = cimFBL;
 	// gui::interactive_monitor(imgs, fpath);
 
 	// free fpath memory
