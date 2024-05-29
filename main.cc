@@ -77,7 +77,7 @@ int main(int argc, char** argv ) {
 	get_flow_path(etf, grad, fpath, w, h, FPath_threshold_S, FPath_threshold_T, num_workers);
 
 	cv::Mat imCL = get_coherent_line(img_gray, etf, fpath, FPath_threshold_T, CL_tanh_he_thr, CL_sigma_c_line_width, CL_sigma_m_line_coherence, CL_P, CL_iterations, num_workers);
-	cv::Mat cimFBL = apply_FBL_filter(infodraw_img, fpath, FBL_sigma_e, FBL_gamma_e, FBL_sigma_g, FBL_gamma_g, FBL_threshold_T, FBL_iteration, num_workers);
+	// cv::Mat cimFBL = apply_FBL_filter(infodraw_img, fpath, FBL_sigma_e, FBL_gamma_e, FBL_sigma_g, FBL_gamma_g, FBL_threshold_T, FBL_iteration, num_workers);
 
 	// ======================================
 

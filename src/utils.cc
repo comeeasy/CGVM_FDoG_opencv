@@ -15,7 +15,10 @@ void utils::save_RGBpixel_of_fpath_to_npy(std::string output_dir, std::string in
             for(int r=0; r<threshold_S; ++r) {
                 if (r < sn) { // insert fpath pixel values if there is fpath 
                     px_cur = fpath[x][y].Alpha[r][0];	py_cur = fpath[x][y].Alpha[r][1];
-                
+                    if (px_cur < 0 || py_cur < 0) {
+                        continue;
+                    }
+
                     cv::Vec3f &pixel = img.at<cv::Vec3f>(py_cur, px_cur);
                     for(int c=0; c<3; ++c) { // 3 for RGB
                         data.push_back(pixel[c]);                    
@@ -59,7 +62,10 @@ void utils::save_Graypixel_of_fpath_to_npy(std::string output_dir, std::string i
             for(int r=0; r<threshold_S; ++r) {
                 if (r < sn) { // insert fpath pixel values if there is fpath 
                     px_cur = fpath[x][y].Alpha[r][0];	py_cur = fpath[x][y].Alpha[r][1];
-                    
+                    if (px_cur < 0 || py_cur < 0) {
+                        continue;
+                    }
+
                     // Must save interpolated value
                     pixel = float_interpolate(img, px_cur, py_cur, w, h);
 
@@ -89,6 +95,8 @@ void utils::save_Graypixel_of_fpath_to_npy(std::string output_dir, std::string i
     std::string final_path;
 	final_path = final_output_dir.string() + "/" + base_name + "_fpath_of_infodraw.npy";
 	npy::write_npy(final_path, d);
+
+    std::cout << "save_Graypixel_of_fpath_to_npy done." << std::endl;
 }
 
 
@@ -104,6 +112,10 @@ void utils::save_fpath(std::string output_dir, std::string input_img_path, FlowP
             for(int r=0; r<threshold_S; ++r) {
                 if (r < sn) { // insert fpath pixel values if there is fpath 
                     px_cur = fpath[x][y].Alpha[r][0];	py_cur = fpath[x][y].Alpha[r][1];
+                    if (px_cur < 0 || py_cur < 0) {
+                        continue;
+                    }
+
                     data.push_back(px_cur);
                     data.push_back(py_cur);
                 } else { // if fpath is shorter than threshold_S, then fill it with 0s.
@@ -129,6 +141,8 @@ void utils::save_fpath(std::string output_dir, std::string input_img_path, FlowP
     std::string final_path;
 	final_path = final_output_dir.string() + "/" + base_name + "_fpath.npy";
 	npy::write_npy(final_path, d);
+
+    std::cout << "save_fpath done." << std::endl;
 }
 
 cv::Mat utils::read_RGB_normalized_image(std::string path) {
@@ -153,7 +167,21 @@ cv::Mat utils::read_Gray_normalized_image(std::string path) {
         exit(1);
     }
 	img_gray.convertTo(img_gray, CV_32F);
-	cv::normalize(img_gray, img_gray, 0.0f, 1.0f, cv::NORM_MINMAX);
+
+	// cv::normalize(img_gray, img_gray, 0.0f, 1.0f, cv::NORM_MINMAX);
+    img_gray /= 255; // normalize
+    // int w = img_gray.size().width;
+    // int h = img_gray.size().width;
+
+    // float _min=0.0f, _max=0.0f; 
+    // for(int i=0; i<w; ++i) {
+    //     for(int j=0; j<h; ++j) {
+    //         float v = img_gray.at<float>(j, i);
+    //         if (v > _max) _max = v;
+    //         if (v < _min) _min = v;
+    //     }
+    // }
+    // printf("min: %f, max: %f\n", _min, _max);
 
     return img_gray;
 }
