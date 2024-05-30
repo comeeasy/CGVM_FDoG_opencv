@@ -63,6 +63,7 @@ void utils::save_Graypixel_of_fpath_to_npy(std::string output_dir, std::string i
                 if (r < sn) { // insert fpath pixel values if there is fpath 
                     px_cur = fpath[x][y].Alpha[r][0];	py_cur = fpath[x][y].Alpha[r][1];
                     if (px_cur < 0 || py_cur < 0) {
+                        data.push_back(1.0f);
                         continue;
                     }
 
@@ -113,6 +114,8 @@ void utils::save_fpath(std::string output_dir, std::string input_img_path, FlowP
                 if (r < sn) { // insert fpath pixel values if there is fpath 
                     px_cur = fpath[x][y].Alpha[r][0];	py_cur = fpath[x][y].Alpha[r][1];
                     if (px_cur < 0 || py_cur < 0) {
+                        data.push_back(-1.0f);
+                        data.push_back(-1.0f);
                         continue;
                     }
 
@@ -168,21 +171,7 @@ cv::Mat utils::read_Gray_normalized_image(std::string path) {
     }
 	img_gray.convertTo(img_gray, CV_32F);
 
-	// cv::normalize(img_gray, img_gray, 0.0f, 1.0f, cv::NORM_MINMAX);
     img_gray /= 255; // normalize
-    // int w = img_gray.size().width;
-    // int h = img_gray.size().width;
-
-    // float _min=0.0f, _max=0.0f; 
-    // for(int i=0; i<w; ++i) {
-    //     for(int j=0; j<h; ++j) {
-    //         float v = img_gray.at<float>(j, i);
-    //         if (v > _max) _max = v;
-    //         if (v < _min) _min = v;
-    //     }
-    // }
-    // printf("min: %f, max: %f\n", _min, _max);
-
     return img_gray;
 }
 
