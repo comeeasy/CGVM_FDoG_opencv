@@ -2127,8 +2127,8 @@ void cl_set_flow_at_point_S(
 		//1. �ش� ������ etf
 		V3DF_interpolate(src_etf, etf_, x, y, w, h);
 		//2. normalize
-
 		vnorm(etf_);
+
 		if ( is_zero_vector(etf_) )	break;
 
 		angle = angle_r(etf_,etf__)*180.0f/PI;
