@@ -189,5 +189,6 @@ void utils::save_image(std::string output_dir, std::string input_img_path, cv::M
 
 	std::string final_path;
 	final_path = final_output_dir.string() + "/" + base_name + postfix + ".png";
+    cv::cvtColor(norm_img, norm_img, cv::COLOR_RGB2BGR);
 	cv::imwrite(final_path, norm_img * 255);
 }

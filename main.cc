@@ -84,9 +84,9 @@ int main(int argc, char** argv ) {
 	// save images to output_dir
 	utils::save_image(output_dir, input_img_path, imCL, "_imCL");
 	// utils::save_image(output_dir, input_img_path, cimFBL, "_FBL");
-	utils::save_image(output_dir, input_img_path, grad, "_grad");
-	utils::save_image(output_dir, input_img_path, tangent, "_tangent");
-	utils::save_image(output_dir, input_img_path, etf, "_ETF");
+	// utils::save_image(output_dir, input_img_path, grad, "_grad");
+	// utils::save_image(output_dir, input_img_path, tangent, "_tangent");
+	// utils::save_image(output_dir, input_img_path, etf, "_ETF");
 	utils::save_image(output_dir, input_img_path, image, "_input");
 	utils::save_image(output_dir, input_img_path, infodraw_img, "_infodraw");
 
