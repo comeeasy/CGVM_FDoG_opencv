@@ -87,8 +87,8 @@ int main(int argc, char** argv ) {
 	// utils::save_image(output_dir, input_img_path, grad, "_grad");
 	// utils::save_image(output_dir, input_img_path, tangent, "_tangent");
 	// utils::save_image(output_dir, input_img_path, etf, "_ETF");
-	utils::save_image(output_dir, input_img_path, image, "");
-	utils::save_image(output_dir, input_img_path, infodraw_img, "");
+	// utils::save_image(output_dir, input_img_path, image, "");
+	// utils::save_image(output_dir, input_img_path, infodraw_img, "");
 
 	// // save infodraw's pixel values through fpath from origin image
 	// save VTF
