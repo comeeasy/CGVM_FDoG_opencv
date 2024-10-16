@@ -90,11 +90,11 @@ void utils::save_Graypixel_of_fpath_to_npy(std::string output_dir, std::string i
 	std::filesystem::path base_output_path(output_dir);
 	std::string base_name = input_file_path.stem().string();
 
-	std::filesystem::path final_output_dir = base_output_path / "fpath_npzs";
+	std::filesystem::path final_output_dir = base_output_path / "vtfs";
 	std::filesystem::create_directories(final_output_dir);
 
     std::string final_path;
-	final_path = final_output_dir.string() + "/" + base_name + "_fpath_of_infodraw.npy";
+	final_path = final_output_dir.string() + "/" + base_name + ".npy";
 	npy::write_npy(final_path, d);
 
     std::cout << "save_Graypixel_of_fpath_to_npy done." << std::endl;
@@ -138,11 +138,11 @@ void utils::save_fpath(std::string output_dir, std::string input_img_path, FlowP
 	std::filesystem::path base_output_path(output_dir);
 	std::string base_name = input_file_path.stem().string();
 
-	std::filesystem::path final_output_dir = base_output_path / "fpath_npzs";
+	std::filesystem::path final_output_dir = base_output_path / "flowpaths";
 	std::filesystem::create_directories(final_output_dir);
 
     std::string final_path;
-	final_path = final_output_dir.string() + "/" + base_name + "_fpath.npy";
+	final_path = final_output_dir.string() + "/" + base_name + ".npy";
 	npy::write_npy(final_path, d);
 
     std::cout << "save_fpath done." << std::endl;
