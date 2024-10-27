@@ -16,11 +16,11 @@ int main(int argc, char** argv ) {
 
 	// ========== Adjust below parameters manually ==========
 	// Set Direction parameters 
-    float CL_sigma_c_line_width = 1.0f;
-    float CL_sigma_m_line_coherence = 5.0f;
+    float CL_sigma_c_line_width = 3.0f;
+    float CL_sigma_m_line_coherence = 4.0f;
     float CL_tanh_he_thr = 0.998f;
 	float CL_P = 0.99;
-	int CL_iterations = 3;
+	int CL_iterations = 2;
 
 	// grad parameters
     float GRAD_grad_thr = 0.0001f;
@@ -78,12 +78,10 @@ int main(int argc, char** argv ) {
 	}
 	get_flow_path(etf, grad, fpath, w, h, FPath_threshold_S, FPath_threshold_T, num_workers);
 
-	for (int i=1; i<6; ++i) {
-		CL_iterations = i;
-		cv::Mat imCL = get_coherent_line(seed_img_gray, etf, fpath, FPath_threshold_T, CL_tanh_he_thr, CL_sigma_c_line_width, CL_sigma_m_line_coherence, CL_P, CL_iterations, num_workers);
-		std::string prefix = "_imCL_" + std::to_string(i);
-		utils::save_image(output_dir, input_img_path, imCL, prefix);
-	}
+	cv::Mat imCL = get_coherent_line(seed_img_gray, etf, fpath, FPath_threshold_T, CL_tanh_he_thr, CL_sigma_c_line_width, CL_sigma_m_line_coherence, CL_P, CL_iterations, num_workers);
+	// std::string prefix = "_imCL_" + std::to_string(i);
+	std::string prefix = "";
+	utils::save_image(output_dir, input_img_path, imCL, prefix);
 
 	// free fpath memory
 	for(int i=0; i<w; ++i) {

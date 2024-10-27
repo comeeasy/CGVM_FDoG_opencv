@@ -184,7 +184,8 @@ void utils::save_image(std::string output_dir, std::string input_img_path, cv::M
 	std::filesystem::path base_output_path(output_dir);
 	std::string base_name = input_file_path.stem().string();
 
-	std::filesystem::path final_output_dir = base_output_path / base_name;
+	// std::filesystem::path final_output_dir = base_output_path / base_name;
+    std::filesystem::path final_output_dir = base_output_path;
 	std::filesystem::create_directories(final_output_dir);
 
 	std::string final_path;
