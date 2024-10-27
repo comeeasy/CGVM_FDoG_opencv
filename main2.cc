@@ -2,14 +2,14 @@
 
 
 int main(int argc, char** argv ) {
-	if (argc < 3) {
-		printf("Usage: ./FDoG_GUI <input_img> <infodraw_img> <output_dir>");
+	if (argc < 2) {
+		printf("Usage: ./getCL <origin_img> <pred_sketch> <output_dir>");
 		exit(1);
 	}
 
 	// set inputs
 	std::string input_img_path(argv[1]); 
-	std::string infodraw_img_path(argv[2]);
+	std::string seed_img_path(argv[2]);
 	std::string output_dir = argv[3];
 
 	size_t num_workers = std::thread::hardware_concurrency();
@@ -34,22 +34,24 @@ int main(int argc, char** argv ) {
 	int ETF_iteration = 2;
 
 	// FBL image parameters
-	float FBL_sigma_e = 2.0f;
-	float FBL_gamma_e = 50.0f;
-	float FBL_sigma_g = 2.0f;
-	float FBL_gamma_g = 10.0f;
-	int FBL_threshold_T = 3;
-	int FBL_iteration = 5;
+	// float FBL_sigma_e = 2.0f;
+	// float FBL_gamma_e = 50.0f;
+	// float FBL_sigma_g = 2.0f;
+	// float FBL_gamma_g = 10.0f;
+	// int FBL_threshold_T = 3;
+	// int FBL_iteration = 5;
 	// =======================================================
 
 
 	// Read input image and infodraw images
 	cv::Mat image = utils::read_RGB_normalized_image(input_img_path);
 	cv::Mat img_gray = utils::read_Gray_normalized_image(input_img_path);
-	cv::Mat infodraw_img = utils::read_RGB_normalized_image(infodraw_img_path);
-	cv::Mat infodraw_img_gray = utils::read_Gray_normalized_image(infodraw_img_path);
-	if (image.cols != infodraw_img.cols || image.rows != infodraw_img.rows) {
-		printf("Size of image and infodraw image must be same.\n");
+
+
+	cv::Mat seed_img = utils::read_RGB_normalized_image(seed_img_path);
+	cv::Mat seed_img_gray = utils::read_Gray_normalized_image(seed_img_path);
+	if (image.cols != seed_img.cols || image.rows != seed_img.rows) {
+		printf("Size of image and pred_sketch must be the same.\n");
 		exit(1);
 	}
 	int w = image.cols, h = image.rows;
@@ -76,8 +78,12 @@ int main(int argc, char** argv ) {
 	}
 	get_flow_path(etf, grad, fpath, w, h, FPath_threshold_S, FPath_threshold_T, num_workers);
 
-	cv::Mat imCL = get_coherent_line(img_gray, etf, fpath, FPath_threshold_T, CL_tanh_he_thr, CL_sigma_c_line_width, CL_sigma_m_line_coherence, CL_P, CL_iterations, num_workers);
-	utils::save_image(output_dir, input_img_path, imCL, "_imCL");
+	for (int i=1; i<6; ++i) {
+		CL_iterations = i;
+		cv::Mat imCL = get_coherent_line(seed_img_gray, etf, fpath, FPath_threshold_T, CL_tanh_he_thr, CL_sigma_c_line_width, CL_sigma_m_line_coherence, CL_P, CL_iterations, num_workers);
+		std::string prefix = "_imCL_" + std::to_string(i);
+		utils::save_image(output_dir, input_img_path, imCL, prefix);
+	}
 
 	// free fpath memory
 	for(int i=0; i<w; ++i) {
