@@ -13,12 +13,17 @@ include_directories( ${OpenCV_INCLUDE_DIRS} )
 add_subdirectory(src)
 
 add_executable (${PROJECT_NAME} main.cc)
-
 target_link_libraries(${PROJECT_NAME} 
+  FDoG
+  ${OpenCV_LIBS}
+)
+add_executable (getCL main2.cc)
+target_link_libraries(getCL 
   FDoG
   ${OpenCV_LIBS}
 )
 
 set(CMAKE_CXX_FLAGS "-Wall -g")
 
-target_compile_options(${PROJECT_NAME} PRIVATE) 
+target_compile_options(${PROJECT_NAME} PRIVATE)
+target_compile_options(getCL PRIVATE) 
