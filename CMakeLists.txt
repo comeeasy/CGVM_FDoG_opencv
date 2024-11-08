@@ -22,8 +22,14 @@ target_link_libraries(getCL
   FDoG
   ${OpenCV_LIBS}
 )
+add_executable (getFBL main3.cc)
+target_link_libraries(getFBL 
+  FDoG
+  ${OpenCV_LIBS}
+)
 
 set(CMAKE_CXX_FLAGS "-Wall -g")
 
 target_compile_options(${PROJECT_NAME} PRIVATE)
 target_compile_options(getCL PRIVATE) 
+target_compile_options(getFBL PRIVATE) 
